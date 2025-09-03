@@ -22,7 +22,9 @@ tipos = {
 
 formatos = {
     "1": "csv_unico",
-    "2": "xls_porArquivo"
+    "2": "xls_porArquivo",
+    "3": "csv_porArquivo",
+    "4": "xls_unico"
 }
 
 # Escolha do tipo de dado
@@ -36,20 +38,26 @@ tipo_escolhido = tipos.get(input("Digite o número correspondente: ").strip(), "
 print("\n📁 Escolha o formato de saída:")
 print("1 - CSV único")
 print("2 - XLSX por estado")
+print("3 - CSV por estado")
+print("4 - XLSX único")
 formato_escolhido = formatos.get(input("Digite o número correspondente: ").strip(), "csv_unico")
 
-# Escolha do estado
-print("\n🌎 Escolha o estado a ser processado:")
-print("Digite a sigla do estado (ex: SP, RJ, DF) ou 'TODOS' para processar o Brasil inteiro")
-estado_input = input("Estado: ").strip().upper()
-
-if estado_input == "TODOS":
+# Definição dos estados a serem processados
+if formato_escolhido in ["csv_unico", "xls_unico"]:
     estados_selecionados = estados
-elif estado_input in estados:
-    estados_selecionados = [estado_input]
+    print("\n🔄 Formato único selecionado — todos os estados serão processados automaticamente.")
 else:
-    print(f"⚠️ Estado inválido: {estado_input}. Encerrando.")
-    exit()
+    print("\n🌎 Escolha o estado a ser processado:")
+    print("Digite a sigla do estado (ex: SP, RJ, DF) ou 'TODOS' para processar o Brasil inteiro")
+    estado_input = input("Estado: ").strip().upper()
+
+    if estado_input == "TODOS":
+        estados_selecionados = estados
+    elif estado_input in estados:
+        estados_selecionados = [estado_input]
+    else:
+        print(f"⚠️ Estado inválido: {estado_input}. Encerrando.")
+        exit()
 
 # Pasta de destino
 base_destino = os.getenv("PASTA_CARTORIO", "./data")
@@ -63,8 +71,11 @@ def filtrar_dados(dados, tipo):
         return dados
     return [d for d in dados if d["Tipo"] == tipo]
 
+# Lista acumuladora para formatos únicos
+todos_dados = []
+
 # Execução
-print(f"\n🚀 Iniciando raspagem: {tipo_escolhido} → {formato_escolhido} → {estado_input}")
+print(f"\n🚀 Iniciando raspagem: {tipo_escolhido} → {formato_escolhido}")
 for estado in estados_selecionados:
     print(f"🔍 Processando estado {estado}...")
     try:
@@ -78,16 +89,35 @@ for estado in estados_selecionados:
             dados_estado.extend(dados_filtrados)
             time.sleep(1)
 
+        # Salvar conforme formato escolhido
         if formato_escolhido == "csv_unico":
+            todos_dados.extend(dados_estado)
+
+        elif formato_escolhido == "xls_unico":
+            todos_dados.extend(dados_estado)
+
+        elif formato_escolhido == "csv_porArquivo":
             caminho_csv = os.path.join(pasta_destino, f"{estado}.csv")
             pd.DataFrame(dados_estado).to_csv(caminho_csv, index=False, encoding='utf-8-sig')
-        else:
+            print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
+
+        elif formato_escolhido == "xls_porArquivo":
             caminho_xlsx = os.path.join(pasta_destino, f"cartorios_{estado}.xlsx")
             pd.DataFrame(dados_estado).to_excel(caminho_xlsx, index=False)
-
-        print(f"✅ Arquivo gerado para {estado}")
+            print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
     except Exception as e:
         print(f"⚠️ Erro ao processar {estado}: {e}")
+
+# Salvar arquivos únicos após o loop
+if formato_escolhido == "csv_unico":
+    caminho_csv_unico = os.path.join(pasta_destino, "cartorios_e_varas_brasil.csv")
+    pd.DataFrame(todos_dados).to_csv(caminho_csv_unico, index=False, encoding='utf-8-sig')
+    print(f"\n📁 CSV único gerado: {caminho_csv_unico} ({len(todos_dados)} registros)")
+
+elif formato_escolhido == "xls_unico":
+    caminho_xls_unico = os.path.join(pasta_destino, "cartorios_e_varas_brasil.xlsx")
+    pd.DataFrame(todos_dados).to_excel(caminho_xls_unico, index=False)
+    print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(todos_dados)} registros)")
 
 print("\n🏁 Raspagem concluída com sucesso.")

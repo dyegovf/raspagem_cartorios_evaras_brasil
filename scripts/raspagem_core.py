@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 def extrair_links_municipios(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
@@ -13,12 +14,17 @@ def extrair_links_municipios(sigla_estado):
             links.append("https://cartorios.info/" + href)
     return links
 
+def extrair_nome_municipio(url_municipio, sigla_estado):
+    path = urlparse(url_municipio).path  # ex: /cartorios-de-rio-de-janeiro-rj.html
+    nome_raw = path.split("cartorios-de-")[-1].split(f"-{sigla_estado.lower()}")[0]
+    nome_formatado = ' '.join([parte.capitalize() for parte in nome_raw.split('-')])
+    return nome_formatado
+
 def extrair_dados_municipio(url_municipio, sigla_estado):
     response = requests.get(url_municipio)
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    titulo = soup.find('h1')
-    municipio = titulo.text.split(" de ")[-1].split(" no ")[0].strip() if titulo else 'Não informado'
+    municipio = extrair_nome_municipio(url_municipio, sigla_estado)
 
     dados = []
     nomes_incluidos = set()

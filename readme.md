@@ -1,10 +1,12 @@
+## 🗂️ Cartórios e Varas Judiciais do Brasil — Web Scraper
+
 Este projeto realiza a raspagem automatizada de dados públicos do site [cartorios.info](https://cartorios.info), extraindo informações detalhadas sobre todos os **cartórios extrajudiciais** e **varas judiciais** dos municípios brasileiros.
 
 Você pode escolher:
 
-- 📌 O tipo de unidade: apenas cartórios, apenas varas ou ambos
-- 📁 O formato de saída: CSV único ou XLSX por estado
-- 🌎 O estado a ser processado: um específico ou todos de uma vez
+- 📌 O tipo de unidade: Cartório, Vara ou Ambos
+- 📁 O formato de saída: CSV único, XLSX único, ou arquivos separados por estado
+- 🌎 O estado a ser processado: um específico ou todos os estados do Brasil
 
 Os arquivos gerados são organizados automaticamente em subpastas dentro de `data/`, conforme suas escolhas.
 
@@ -16,10 +18,13 @@ Os arquivos gerados são organizados automaticamente em subpastas dentro de `dat
 - ✅ Captura separada de cartórios e varas judiciais
 - ✅ Identificação do tipo de unidade (Cartório ou Vara)
 - ✅ Filtro por tipo de unidade e estado
-- ✅ Geração de arquivos em dois formatos:
-  - Um único `.csv` consolidado por estado
+- ✅ Geração de arquivos em quatro formatos:
+  - Um único `.csv` consolidado
+  - Um único `.xlsx` consolidado
+  - Um `.csv` por estado
   - Um `.xlsx` por estado
 - ✅ Organização automática dos arquivos em subpastas específicas
+- ✅ Correção robusta na extração do nome do município (via URL)
 - ✅ Configuração segura da pasta de destino via `.env`
 
 ---
@@ -66,7 +71,6 @@ Crie um arquivo `.env` na raiz do projeto com:
 PASTA_CARTORIO=CAMINHO_DA_PASTA_DE_DESTINO
 ```
 
-> Substitua `CAMINHO_DA_PASTA_DE_DESTINO` pelo caminho desejado no seu sistema.  
 > Exemplo: `PASTA_CARTORIO=./data`
 
 Adicione `.env` ao seu `.gitignore`:
@@ -84,18 +88,10 @@ python main.py
 Você será guiado por três etapas:
 
 1. Escolher o tipo de unidade: Cartório, Vara ou Ambos
-2. Escolher o formato de saída: CSV único ou XLSX por estado
-3. Escolher o estado: sigla (ex: SP) ou "TODOS" para o Brasil inteiro
+2. Escolher o formato de saída: CSV único, XLSX único, ou por estado
+3. Escolher o estado (somente se o formato permitir)
 
-Os arquivos serão salvos automaticamente em subpastas como:
-
-```
-data/
-├── cartorio_csv_unico/
-├── vara_xls_porArquivo/
-├── ambos_csv_unico/
-...
-```
+> Se você escolher um formato único, o script processará automaticamente todos os estados.
 
 ---
 
@@ -105,13 +101,12 @@ data/
 - Os dados são públicos e extraídos apenas para fins informativos e acadêmicos
 - O campo "Serviços" pode vir como "Não informado" em varas judiciais ou cartórios sem atribuições listadas
 - O campo "Tipo" permite distinguir entre cartórios extrajudiciais e varas judiciais
+- O nome do município é extraído diretamente da URL, garantindo precisão mesmo em casos complexos como "Rio de Janeiro"
 
 ---
 
 ### 📬 Contato
 
-Desenvolvido por Dyego  
+Desenvolvido por Dyegovf  
 📍 Brasília, Brasil  
-📧 dyego@[seu-email].com
-
----
+📧 dyegovf@gmail.com
