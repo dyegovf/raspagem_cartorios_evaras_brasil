@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import pandas as pd
 from dotenv import load_dotenv
@@ -26,6 +27,18 @@ formatos = {
     "3": "csv_porArquivo",
     "4": "xls_unico"
 }
+
+def slugify(text):
+    # Remove acentos, cedilha e caracteres especiais, deixa só letras, números e _
+    text = text.lower()
+    text = re.sub(r'[ç]', 'c', text)
+    text = re.sub(r'[áàãâä]', 'a', text)
+    text = re.sub(r'[éèêë]', 'e', text)
+    text = re.sub(r'[íìîï]', 'i', text)
+    text = re.sub(r'[óòõôö]', 'o', text)
+    text = re.sub(r'[úùûü]', 'u', text)
+    text = re.sub(r'[^a-z0-9_]', '_', text)
+    return text
 
 # Escolha do tipo de dado
 print("📌 Escolha o tipo de dado a ser extraído:")
@@ -61,7 +74,7 @@ else:
 
 # Pasta de destino
 base_destino = os.getenv("PASTA_CARTORIO", "./data")
-subpasta = f"{tipo_escolhido.lower()}_{formato_escolhido}"
+subpasta = f"{slugify(tipo_escolhido)}_{formato_escolhido}"
 pasta_destino = os.path.join(base_destino, subpasta)
 os.makedirs(pasta_destino, exist_ok=True)
 
@@ -73,6 +86,12 @@ def filtrar_dados(dados, tipo):
 
 # Lista acumuladora para formatos únicos
 todos_dados = []
+
+# Novos campos esperados
+campos_esperados = [
+    'Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo',
+    'Escrivão Titular', 'Data de Criação', 'CNS'
+]
 
 # Execução
 print(f"\n🚀 Iniciando raspagem: {tipo_escolhido} → {formato_escolhido}")
@@ -98,14 +117,20 @@ for estado in estados_selecionados:
 
         elif formato_escolhido == "csv_porArquivo":
             df = pd.DataFrame(dados_estado)
-            df = df[['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']]
+            for campo in campos_esperados:
+                if campo not in df.columns:
+                    df[campo] = 'Não informado'
+            df = df[campos_esperados]
             caminho_csv = os.path.join(pasta_destino, f"{estado}.csv")
             df.to_csv(caminho_csv, index=False, encoding='utf-8-sig')
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
         elif formato_escolhido == "xls_porArquivo":
             df = pd.DataFrame(dados_estado)
-            df = df[['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']]
+            for campo in campos_esperados:
+                if campo not in df.columns:
+                    df[campo] = 'Não informado'
+            df = df[campos_esperados]
             caminho_xlsx = os.path.join(pasta_destino, f"cartorios_{estado}.xlsx")
             df.to_excel(caminho_xlsx, index=False)
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
@@ -114,7 +139,6 @@ for estado in estados_selecionados:
         print(f"⚠️ Erro ao processar {estado}: {e}")
 
 # Garantir consistência de colunas nos arquivos únicos
-campos_esperados = ['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']
 for registro in todos_dados:
     for campo in campos_esperados:
         if campo not in registro:
