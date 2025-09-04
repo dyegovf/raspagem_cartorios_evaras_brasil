@@ -69,7 +69,7 @@ os.makedirs(pasta_destino, exist_ok=True)
 def filtrar_dados(dados, tipo):
     if tipo == "Ambos":
         return dados
-    return [d for d in dados if d["Tipo"] == tipo]
+    return [d for d in dados if d.get("Tipo") == tipo]
 
 # Lista acumuladora para formatos únicos
 todos_dados = []
@@ -97,27 +97,40 @@ for estado in estados_selecionados:
             todos_dados.extend(dados_estado)
 
         elif formato_escolhido == "csv_porArquivo":
+            df = pd.DataFrame(dados_estado)
+            df = df[['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']]
             caminho_csv = os.path.join(pasta_destino, f"{estado}.csv")
-            pd.DataFrame(dados_estado).to_csv(caminho_csv, index=False, encoding='utf-8-sig')
+            df.to_csv(caminho_csv, index=False, encoding='utf-8-sig')
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
         elif formato_escolhido == "xls_porArquivo":
+            df = pd.DataFrame(dados_estado)
+            df = df[['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']]
             caminho_xlsx = os.path.join(pasta_destino, f"cartorios_{estado}.xlsx")
-            pd.DataFrame(dados_estado).to_excel(caminho_xlsx, index=False)
+            df.to_excel(caminho_xlsx, index=False)
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
     except Exception as e:
         print(f"⚠️ Erro ao processar {estado}: {e}")
 
+# Garantir consistência de colunas nos arquivos únicos
+campos_esperados = ['Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo']
+for registro in todos_dados:
+    for campo in campos_esperados:
+        if campo not in registro:
+            registro[campo] = 'Não informado'
+
 # Salvar arquivos únicos após o loop
 if formato_escolhido == "csv_unico":
+    df = pd.DataFrame(todos_dados)[campos_esperados]
     caminho_csv_unico = os.path.join(pasta_destino, "cartorios_e_varas_brasil.csv")
-    pd.DataFrame(todos_dados).to_csv(caminho_csv_unico, index=False, encoding='utf-8-sig')
+    df.to_csv(caminho_csv_unico, index=False, encoding='utf-8-sig')
     print(f"\n📁 CSV único gerado: {caminho_csv_unico} ({len(todos_dados)} registros)")
 
 elif formato_escolhido == "xls_unico":
+    df = pd.DataFrame(todos_dados)[campos_esperados]
     caminho_xls_unico = os.path.join(pasta_destino, "cartorios_e_varas_brasil.xlsx")
-    pd.DataFrame(todos_dados).to_excel(caminho_xls_unico, index=False)
+    df.to_excel(caminho_xls_unico, index=False)
     print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(todos_dados)} registros)")
 
 print("\n🏁 Raspagem concluída com sucesso.")
