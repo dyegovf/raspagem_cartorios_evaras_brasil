@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import pandas as pd
 from dotenv import load_dotenv
+import concurrent.futures
 from scripts.raspagem_core import extrair_links_municipios, extrair_dados_municipio
 
 load_dotenv()
@@ -30,7 +31,6 @@ formatos = {
 }
 
 def slugify(text):
-    # Remove acentos, cedilha e caracteres especiais, deixa só letras, números e _
     text = text.lower()
     text = re.sub(r'[ç]', 'c', text)
     text = re.sub(r'[áàãâä]', 'a', text)
@@ -42,7 +42,6 @@ def slugify(text):
     return text
 
 def proximo_nome_arquivo(pasta, nome_base, extensao):
-    # Gera nome com _v1, _v2, etc se já existir
     versao = 1
     nome_arquivo = f"{nome_base}_v{versao}.{extensao}"
     while os.path.exists(os.path.join(pasta, nome_arquivo)):
@@ -50,17 +49,16 @@ def proximo_nome_arquivo(pasta, nome_base, extensao):
         nome_arquivo = f"{nome_base}_v{versao}.{extensao}"
     return nome_arquivo
 
-# Data de geração no formato aaaammdd
 data_geracao = datetime.now().strftime("%Y%m%d")
+data_geracao_formatada = datetime.now().strftime("%d/%m/%y")
+hora_inicio = datetime.now().strftime("%H:%M")
 
-# Escolha do tipo de dado
 print("📌 Escolha o tipo de dado a ser extraído:")
 print("1 - Apenas Cartórios")
 print("2 - Apenas Varas Judiciais")
 print("3 - Ambos")
 tipo_escolhido = tipos.get(input("Digite o número correspondente: ").strip(), "Ambos")
 
-# Escolha do formato de saída
 print("\n📁 Escolha o formato de saída:")
 print("1 - CSV único")
 print("2 - XLSX por estado")
@@ -68,7 +66,6 @@ print("3 - CSV por estado")
 print("4 - XLSX único")
 formato_escolhido = formatos.get(input("Digite o número correspondente: ").strip(), "csv_unico")
 
-# Definição dos estados a serem processados
 if formato_escolhido in ["csv_unico", "xls_unico"]:
     estados_selecionados = estados
     print("\n🔄 Formato único selecionado — todos os estados serão processados automaticamente.")
@@ -85,43 +82,46 @@ else:
         print(f"⚠️ Estado inválido: {estado_input}. Encerrando.")
         exit()
 
-# Pasta de destino
 base_destino = os.getenv("PASTA_CARTORIO", "./data")
 subpasta = f"{slugify(tipo_escolhido)}_{formato_escolhido}"
 pasta_destino = os.path.join(base_destino, subpasta)
 os.makedirs(pasta_destino, exist_ok=True)
 
-# Função de filtro
 def filtrar_dados(dados, tipo):
     if tipo == "Ambos":
         return dados
     return [d for d in dados if d.get("Tipo") == tipo]
 
-# Lista acumuladora para formatos únicos
 todos_dados = []
 
-# Novos campos esperados
 campos_esperados = [
     'Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo',
     'Escrivão Titular', 'Data de Criação', 'CNS'
 ]
 
-# Execução
+def processar_municipio(args):
+    url_municipio, estado, tipo_escolhido = args
+    dados_municipio = extrair_dados_municipio(url_municipio, estado)
+    dados_filtrados = filtrar_dados(dados_municipio, tipo_escolhido)
+    return dados_filtrados
+
 print(f"\n🚀 Iniciando raspagem: {tipo_escolhido} → {formato_escolhido}")
 for estado in estados_selecionados:
-    print(f"🔍 Processando estado {estado}...")
+    print(f"\n🔍 Processando estado {estado}...")
     try:
         links_municipios = extrair_links_municipios(estado)
         dados_estado = []
 
-        for url_municipio in links_municipios:
-            print(f"   ➤ Extraindo dados de {url_municipio}")
-            dados_municipio = extrair_dados_municipio(url_municipio, estado)
-            dados_filtrados = filtrar_dados(dados_municipio, tipo_escolhido)
-            dados_estado.extend(dados_filtrados)
-            time.sleep(1)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            args_list = [(url, estado, tipo_escolhido) for url in links_municipios]
+            resultados = executor.map(processar_municipio, args_list)
+            total = len(links_municipios)
+            for i, dados_filtrados in enumerate(resultados, 1):
+                dados_estado.extend(dados_filtrados)
+                print(f"ESTADO {estado} {i}/{total}", end='\r')
 
-        # Salvar conforme formato escolhido
+        print(f"\n✅ Estado {estado} concluído: {total}/{total}")
+
         if formato_escolhido == "csv_unico":
             todos_dados.extend(dados_estado)
 
@@ -163,15 +163,13 @@ for estado in estados_selecionados:
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
     except Exception as e:
-        print(f"⚠️ Erro ao processar {estado}: {e}")
+        print(f"\n⚠️ Erro ao processar {estado}: {e}")
 
-# Garantir consistência de colunas nos arquivos únicos
 for registro in todos_dados:
     for campo in campos_esperados:
         if campo not in registro:
             registro[campo] = 'Não informado'
 
-# Salvar arquivos únicos após o loop
 if formato_escolhido == "csv_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
     if tipo_escolhido == "Cartório":
@@ -198,4 +196,8 @@ elif formato_escolhido == "xls_unico":
     df.to_excel(caminho_xls_unico, index=False)
     print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(todos_dados)} registros)")
 
+hora_fim = datetime.now().strftime("%H:%M")
+print(f"\n📅 Data de extração: {data_geracao_formatada}")
+print(f"⏰ Hora de início: {hora_inicio}")
+print(f"⏰ Hora de fim: {hora_fim}")
 print("\n🏁 Raspagem concluída com sucesso.")
