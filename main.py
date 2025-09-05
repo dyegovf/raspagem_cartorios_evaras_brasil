@@ -41,13 +41,11 @@ def slugify(text):
     text = re.sub(r'[^a-z0-9_]', '_', text)
     return text
 
-def proximo_nome_arquivo(pasta, nome_base, extensao):
-    versao = 1
-    nome_arquivo = f"{nome_base}_v{versao}.{extensao}"
-    while os.path.exists(os.path.join(pasta, nome_arquivo)):
-        versao += 1
-        nome_arquivo = f"{nome_base}_v{versao}.{extensao}"
-    return nome_arquivo
+# Função para gerar nome de arquivo com data e hora
+def nome_arquivo_datahora(nome_base, extensao):
+    agora = datetime.now()
+    data_hora = agora.strftime("%Y%m%d_%H%M%S")
+    return f"{data_hora}_{nome_base}.{extensao}"
 
 data_geracao = datetime.now().strftime("%Y%m%d")
 data_geracao_formatada = datetime.now().strftime("%d/%m/%y")
@@ -135,12 +133,12 @@ for estado in estados_selecionados:
                     df[campo] = 'Não informado'
             df = df[campos_esperados]
             if tipo_escolhido == "Cartório":
-                nome_base = f"{data_geracao}_cartorios_{estado}"
+                nome_base = f"cartorios_{estado}"
             elif tipo_escolhido == "Vara":
-                nome_base = f"{data_geracao}_varas_{estado}"
+                nome_base = f"varas_{estado}"
             else:
-                nome_base = f"{data_geracao}_cartorios_e_varas_{estado}"
-            nome_arquivo = proximo_nome_arquivo(pasta_destino, nome_base, "csv")
+                nome_base = f"cartorios_e_varas_{estado}"
+            nome_arquivo = nome_arquivo_datahora(nome_base, "csv")
             caminho_csv = os.path.join(pasta_destino, nome_arquivo)
             df.to_csv(caminho_csv, index=False, encoding='utf-8-sig')
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
@@ -152,12 +150,12 @@ for estado in estados_selecionados:
                     df[campo] = 'Não informado'
             df = df[campos_esperados]
             if tipo_escolhido == "Cartório":
-                nome_base = f"{data_geracao}_cartorios_{estado}"
+                nome_base = f"cartorios_{estado}"
             elif tipo_escolhido == "Vara":
-                nome_base = f"{data_geracao}_varas_{estado}"
+                nome_base = f"varas_{estado}"
             else:
-                nome_base = f"{data_geracao}_cartorios_e_varas_{estado}"
-            nome_arquivo = proximo_nome_arquivo(pasta_destino, nome_base, "xlsx")
+                nome_base = f"cartorios_e_varas_{estado}"
+            nome_arquivo = nome_arquivo_datahora(nome_base, "xlsx")
             caminho_xlsx = os.path.join(pasta_destino, nome_arquivo)
             df.to_excel(caminho_xlsx, index=False)
             print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
@@ -173,12 +171,12 @@ for registro in todos_dados:
 if formato_escolhido == "csv_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
     if tipo_escolhido == "Cartório":
-        nome_base = f"{data_geracao}_cartorios_brasil"
+        nome_base = "cartorios_brasil"
     elif tipo_escolhido == "Vara":
-        nome_base = f"{data_geracao}_varas_brasil"
+        nome_base = "varas_brasil"
     else:
-        nome_base = f"{data_geracao}_cartorios_e_varas_brasil"
-    nome_arquivo = proximo_nome_arquivo(pasta_destino, nome_base, "csv")
+        nome_base = "cartorios_e_varas_brasil"
+    nome_arquivo = nome_arquivo_datahora(nome_base, "csv")
     caminho_csv_unico = os.path.join(pasta_destino, nome_arquivo)
     df.to_csv(caminho_csv_unico, index=False, encoding='utf-8-sig')
     print(f"\n📁 CSV único gerado: {caminho_csv_unico} ({len(todos_dados)} registros)")
@@ -186,12 +184,12 @@ if formato_escolhido == "csv_unico":
 elif formato_escolhido == "xls_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
     if tipo_escolhido == "Cartório":
-        nome_base = f"{data_geracao}_cartorios_brasil"
+        nome_base = "cartorios_brasil"
     elif tipo_escolhido == "Vara":
-        nome_base = f"{data_geracao}_varas_brasil"
+        nome_base = "varas_brasil"
     else:
-        nome_base = f"{data_geracao}_cartorios_e_varas_brasil"
-    nome_arquivo = proximo_nome_arquivo(pasta_destino, nome_base, "xlsx")
+        nome_base = "cartorios_e_varas_brasil"
+    nome_arquivo = nome_arquivo_datahora(nome_base, "xlsx")
     caminho_xls_unico = os.path.join(pasta_destino, nome_arquivo)
     df.to_excel(caminho_xls_unico, index=False)
     print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(todos_dados)} registros)")
