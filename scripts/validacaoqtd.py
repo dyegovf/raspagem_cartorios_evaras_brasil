@@ -138,10 +138,48 @@ def contagem_site(sigla_estado):
 
 # Agregar contagem do site para todos os estados
 contagem_site_total = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
-for estado in estados_comparar:
-    print(f"\nValidando {estado} no site (contagem por município)...")
-    resultado_estado = contagem_site(estado)
+for idx_estado, estado in enumerate(estados_comparar, 1):
+    print(f"\nValidando {estado} [{str(idx_estado).zfill(2)}/{str(len(estados_comparar)).zfill(2)}] no site...")
+    resultado_estado = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
+    url_estado = f"https://cartorios.info/cartorios-{estado.lower()}.html"
+    response = requests.get(url_estado)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    cidades_div = soup.find('div', id='cidades')
+    if not cidades_div:
+        continue
+    cidades = cidades_div.find_all('div', class_='cidades')
+    total_municipios = len(cidades)
+    for idx_mun, cidade in enumerate(cidades, 1):
+        a_tag = cidade.find('a', href=True)
+        if not a_tag:
+            continue
+        link = a_tag['href']
+        url_municipio = f"https://cartorios.info/{link}"
+        print(f"- Municípios processados: {idx_mun}/{total_municipios}", end='\r')
+        resp = requests.get(url_municipio)
+        soup_mun = BeautifulSoup(resp.content, 'html.parser')
+        # Nome do município
+        path = link.split("cartorios-de-")[-1].split(f"-{estado.lower()}")[0]
+        municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
+        municipio_norm = normalize_nome(municipio)
+        municipio = municipio_norm
+        # Cartórios
+        div_cartorios = soup_mun.find('div', id='cartorios')
+        if div_cartorios:
+            cartorios = div_cartorios.find_all('div', class_='row', id=True)
+            resultado_estado[(estado, municipio_norm)]['CartoriosSite'] = len(cartorios)
+        else:
+            resultado_estado[(estado, municipio_norm)]['CartoriosSite'] = 0
+        # Varas
+        div_varas = soup_mun.find('div', id='varas')
+        if div_varas:
+            varas = div_varas.find_all('div', class_='row', id=True)
+            resultado_estado[(estado, municipio_norm)]['VarasSite'] = len(varas)
+        else:
+            resultado_estado[(estado, municipio_norm)]['VarasSite'] = 0
+        resultado_estado[(estado, municipio_norm)]['CartoriosEVaraSite'] = resultado_estado[(estado, municipio_norm)]['CartoriosSite'] + resultado_estado[(estado, municipio_norm)]['VarasSite']
     contagem_site_total.update(resultado_estado)
+    print(f"- Municípios processados: {total_municipios}/{total_municipios}")
 
 # Gerar DataFrame de validação
 if tipo_cartorio:
