@@ -138,6 +138,32 @@ def contagem_site(sigla_estado):
 
 # Agregar contagem do site para todos os estados
 contagem_site_total = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
+import concurrent.futures
+
+def processar_municipio_site(args):
+    cidade, estado = args
+    a_tag = cidade.find('a', href=True)
+    if not a_tag:
+        return None
+    link = a_tag['href']
+    url_municipio = f"https://cartorios.info/{link}"
+    try:
+        resp = requests.get(url_municipio)
+        soup_mun = BeautifulSoup(resp.content, 'html.parser')
+        # Nome do município
+        path = link.split("cartorios-de-")[-1].split(f"-{estado.lower()}")[0]
+        municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
+        municipio_norm = normalize_nome(municipio)
+        # Cartórios
+        div_cartorios = soup_mun.find('div', id='cartorios')
+        cartorios_count = len(div_cartorios.find_all('div', class_='row', id=True)) if div_cartorios else 0
+        # Varas
+        div_varas = soup_mun.find('div', id='varas')
+        varas_count = len(div_varas.find_all('div', class_='row', id=True)) if div_varas else 0
+        return (estado, municipio_norm, cartorios_count, varas_count)
+    except Exception:
+        return (estado, None, 0, 0)
+
 for idx_estado, estado in enumerate(estados_comparar, 1):
     print(f"\nValidando {estado} [{str(idx_estado).zfill(2)}/{str(len(estados_comparar)).zfill(2)}] no site...")
     resultado_estado = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
@@ -149,35 +175,19 @@ for idx_estado, estado in enumerate(estados_comparar, 1):
         continue
     cidades = cidades_div.find_all('div', class_='cidades')
     total_municipios = len(cidades)
-    for idx_mun, cidade in enumerate(cidades, 1):
-        a_tag = cidade.find('a', href=True)
-        if not a_tag:
-            continue
-        link = a_tag['href']
-        url_municipio = f"https://cartorios.info/{link}"
-        print(f"- Municípios processados: {idx_mun}/{total_municipios}", end='\r')
-        resp = requests.get(url_municipio)
-        soup_mun = BeautifulSoup(resp.content, 'html.parser')
-        # Nome do município
-        path = link.split("cartorios-de-")[-1].split(f"-{estado.lower()}")[0]
-        municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
-        municipio_norm = normalize_nome(municipio)
-        municipio = municipio_norm
-        # Cartórios
-        div_cartorios = soup_mun.find('div', id='cartorios')
-        if div_cartorios:
-            cartorios = div_cartorios.find_all('div', class_='row', id=True)
-            resultado_estado[(estado, municipio_norm)]['CartoriosSite'] = len(cartorios)
-        else:
-            resultado_estado[(estado, municipio_norm)]['CartoriosSite'] = 0
-        # Varas
-        div_varas = soup_mun.find('div', id='varas')
-        if div_varas:
-            varas = div_varas.find_all('div', class_='row', id=True)
-            resultado_estado[(estado, municipio_norm)]['VarasSite'] = len(varas)
-        else:
-            resultado_estado[(estado, municipio_norm)]['VarasSite'] = 0
-        resultado_estado[(estado, municipio_norm)]['CartoriosEVaraSite'] = resultado_estado[(estado, municipio_norm)]['CartoriosSite'] + resultado_estado[(estado, municipio_norm)]['VarasSite']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        args_list = [(cidade, estado) for cidade in cidades]
+        futuros = executor.map(processar_municipio_site, args_list)
+        for idx_mun, resultado in enumerate(futuros, 1):
+            print(f"- Municípios processados: {idx_mun}/{total_municipios}", end='\r')
+            if resultado is None:
+                continue
+            estado_res, municipio_norm, cartorios_count, varas_count = resultado
+            if municipio_norm is None:
+                continue
+            resultado_estado[(estado_res, municipio_norm)]['CartoriosSite'] = cartorios_count
+            resultado_estado[(estado_res, municipio_norm)]['VarasSite'] = varas_count
+            resultado_estado[(estado_res, municipio_norm)]['CartoriosEVaraSite'] = cartorios_count + varas_count
     contagem_site_total.update(resultado_estado)
     print(f"- Municípios processados: {total_municipios}/{total_municipios}")
 

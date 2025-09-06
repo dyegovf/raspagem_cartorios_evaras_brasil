@@ -140,22 +140,20 @@ def processar_municipio(args):
     return dados_filtrados
 
 print(f"\n🚀 Iniciando raspagem: {tipo_escolhido} → {formato_escolhido}")
-for estado in estados_selecionados:
-    print(f"\n🔍 Processando estado {estado}...")
+for idx_estado, estado in enumerate(estados_selecionados, 1):
+    print(f"\nRaspando {estado} [{str(idx_estado).zfill(2)}/{str(len(estados_selecionados)).zfill(2)}] do site...")
     try:
         links_municipios = extrair_links_municipios(estado)
         dados_estado = []
-
+        total = len(links_municipios)
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             args_list = [(url, estado, tipo_escolhido) for url in links_municipios]
             resultados = executor.map(processar_municipio, args_list)
-            total = len(links_municipios)
             for i, dados_filtrados in enumerate(resultados, 1):
                 dados_estado.extend(dados_filtrados)
-                print(f"ESTADO {estado} {i}/{total}", end='\r')
-
-        print(f"\n✅ Estado {estado} concluído: {total}/{total}")
-
+                print(f"Municipios raspados: {i}/{total}", end='\r')
+        print(f"Municipios raspados: {total}/{total}")
+        print(f"✅ Estado {estado} concluído: {total}/{total}")
 
         if formato_escolhido == "csv_unico":
             todos_dados.extend(dados_estado)
