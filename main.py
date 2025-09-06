@@ -68,17 +68,24 @@ if formato_escolhido in ["csv_unico", "xls_unico"]:
     estados_selecionados = estados
     print("\n🔄 Formato único selecionado — todos os estados serão processados automaticamente.")
 else:
-    print("\n🌎 Escolha o estado a ser processado:")
-    print("Digite a sigla do estado (ex: SP, RJ, DF) ou 'TODOS' para processar o Brasil inteiro")
-    estado_input = input("Estado: ").strip().upper()
+    print("\n🌎 Escolha o(s) estado(s) a ser(em) processado(s):")
+    print("Digite a(s) sigla(s) do(s) estado(s) separadas por vírgula (ex: SP, RJ, DF) ou 'TODOS' para processar o Brasil inteiro")
+    estado_input = input("Estado(s): ").strip().upper()
 
     if estado_input == "TODOS":
         estados_selecionados = estados
-    elif estado_input in estados:
-        estados_selecionados = [estado_input]
     else:
-        print(f"⚠️ Estado inválido: {estado_input}. Encerrando.")
-        exit()
+        siglas = [sigla.strip() for sigla in estado_input.split(',') if sigla.strip()]
+        estados_invalidos = [sigla for sigla in siglas if sigla not in estados]
+        if estados_invalidos:
+            print(f"⚠️ Estado(s) inválido(s): {', '.join(estados_invalidos)}. Encerrando.")
+            exit()
+        estados_selecionados = siglas
+
+    # Se mais de um estado foi selecionado, forçar formato único
+    if len(estados_selecionados) > 1:
+        print("\n🔄 Múltiplos estados selecionados — a saída será gerada em arquivo único XLSX.")
+        formato_escolhido = "xls_unico"
 
 base_destino = os.getenv("PASTA_CARTORIO", "./data")
 subpasta = f"{slugify(tipo_escolhido)}_{formato_escolhido}"

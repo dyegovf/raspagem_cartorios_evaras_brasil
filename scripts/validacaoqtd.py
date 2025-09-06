@@ -1,8 +1,27 @@
+
 import sys
 import os
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from collections import defaultdict
+import unicodedata
+
+import unicodedata
+# Função para normalizar nomes (remove acentos, caracteres especiais, minúsculo)
+def normalize_nome(nome, estado=None):
+    if not isinstance(nome, str):
+        return ''
+    nome = nome.lower()
+    if estado:
+        sufixo = f'em {estado.lower()}'
+        if nome.endswith(sufixo):
+            nome = nome[: -len(sufixo)].strip()
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    nome = ' '.join(nome.split())
+    return nome
 
 # Lista de estados brasileiros
 estados = [
@@ -18,18 +37,9 @@ if not arquivo:
     print("Arquivo não informado. Saindo.")
     exit()
 
-print("\nDigite a sigla do estado para comparar (ex: SP, RJ, DF) ou 'TODOS' para comparar todos:")
-uf = input("Estado: ").strip().upper()
 
-if uf == "TODOS":
-    estados_comparar = estados
-    print("\nComparando todos os estados.")
-elif uf in estados:
-    estados_comparar = [uf]
-    print(f"\nComparando apenas o estado: {uf}")
-else:
-    print("Estado inválido. Saindo.")
-    exit()
+
+
 
 # Leitura do arquivo
 if arquivo.endswith('.csv'):
@@ -40,62 +50,162 @@ else:
     print("Arquivo deve ser .csv ou .xlsx")
     exit()
 
-if uf != "TODOS":
-    df = df[df['Estado'] == uf]
+# Detecta automaticamente os estados presentes no arquivo
+estados_comparar = sorted(df['Estado'].dropna().unique())
+print(f"\nEstados detectados no arquivo: {', '.join(estados_comparar)}")
 
-total_arquivo = len(df)
-total_cartorios_arquivo = len(df[df['Tipo'] == 'Cartório'])
-total_varas_arquivo = len(df[df['Tipo'] == 'Vara'])
+# Adiciona coluna normalizada logo após leitura
+df['MunicipioNorm'] = df.apply(lambda row: normalize_nome(row['Município'], row['Estado']), axis=1)
 
-print(f"\nArquivo: {arquivo}")
-print(f"Total no arquivo: {total_arquivo}")
-print(f"Cartórios no arquivo: {total_cartorios_arquivo}")
-print(f"Varas no arquivo: {total_varas_arquivo}")
+# Identificar o(s) tipo(s) presentes no arquivo
+tipos_arquivo = set(df['Tipo'].unique())
+tipo_cartorio = 'Cartório' in tipos_arquivo and len(tipos_arquivo) == 1
+tipo_vara = 'Vara' in tipos_arquivo and len(tipos_arquivo) == 1
+tipo_ambos = len(tipos_arquivo) > 1
 
-# Validação independente: conta cartórios e varas direto do HTML do site
-def contar_links_site(sigla_estado):
+# Contagem do arquivo por Estado e Município
+def contagem_arquivo(df, tipo):
+    df = df.copy()
+    df['MunicipioNorm'] = df.apply(lambda row: normalize_nome(row['Município'], row['Estado']), axis=1)
+    if tipo == 'Cartório':
+        filtro = df[df['Tipo'] == 'Cartório']
+        return filtro.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='CartoriosArquivo')
+    elif tipo == 'Vara':
+        filtro = df[df['Tipo'] == 'Vara']
+        return filtro.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='VarasArquivo')
+    else:
+        return df.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='CartorioEVaraArquivo')
+
+# Contagem do site por Estado e Município
+def contagem_site(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
     response = requests.get(url_estado)
     soup = BeautifulSoup(response.content, 'html.parser')
-    links = [a['href'] for a in soup.find_all('a', href=True) if f"cartorios-de-" in a['href']]
-    total_cartorios = 0
-    total_varas = 0
-
-    for link in links:
+    resultado = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
+    cidades_div = soup.find('div', id='cidades')
+    if not cidades_div:
+        return resultado
+    cidades = cidades_div.find_all('div', class_='cidades')
+    for cidade in cidades:
+        a_tag = cidade.find('a', href=True)
+        if not a_tag:
+            continue
+        link = a_tag['href']
         url_municipio = f"https://cartorios.info/{link}"
         resp = requests.get(url_municipio)
         soup_mun = BeautifulSoup(resp.content, 'html.parser')
+        # Nome do município
+        path = link.split("cartorios-de-")[-1].split(f"-{sigla_estado.lower()}")[0]
+        municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
+        municipio_norm = normalize_nome(municipio)
         # Cartórios
         div_cartorios = soup_mun.find('div', id='cartorios')
         if div_cartorios:
             cartorios = div_cartorios.find_all('div', class_='row', id=True)
-            total_cartorios += len(cartorios)
+            resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] = len(cartorios)
+        else:
+            resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] = 0
         # Varas
         div_varas = soup_mun.find('div', id='varas')
         if div_varas:
             varas = div_varas.find_all('div', class_='row', id=True)
-            total_varas += len(varas)
-    return total_cartorios, total_varas
+            resultado[(sigla_estado, municipio_norm)]['VarasSite'] = len(varas)
+        else:
+            resultado[(sigla_estado, municipio_norm)]['VarasSite'] = 0
+        resultado[(sigla_estado, municipio_norm)]['CartoriosEVaraSite'] = resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] + resultado[(sigla_estado, municipio_norm)]['VarasSite']
+    return resultado
 
-total_cartorios_site = 0
-total_varas_site = 0
-
+# Agregar contagem do site para todos os estados
+contagem_site_total = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
 for estado in estados_comparar:
-    print(f"\nValidando {estado} no site (contagem independente)...")
-    cartorios, varas = contar_links_site(estado)
-    total_cartorios_site += cartorios
-    total_varas_site += varas
-    print(f"Cartórios encontrados no site ({estado}): {cartorios}")
-    print(f"Varas encontradas no site ({estado}): {varas}")
+    print(f"\nValidando {estado} no site (contagem por município)...")
+    resultado_estado = contagem_site(estado)
+    contagem_site_total.update(resultado_estado)
 
-total_site = total_cartorios_site + total_varas_site
+# Gerar DataFrame de validação
+if tipo_cartorio:
+    df_arquivo = contagem_arquivo(df, 'Cartório')
+    rows = []
+    # print("\nDEBUG: Chaves do arquivo:")
+    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
+    # print("\nDEBUG: Chaves do site:")
+    # print([k for k in contagem_site_total.keys()])
+    for _, row in df_arquivo.iterrows():
+        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['CartoriosArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('CartoriosSite', 0)
+        dif = qtd_arquivo - qtd_site
+        # Nome original do município
+        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
+        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
+        rows.append({
+            'Estado': estado,
+            'Municipio': municipio_exib,
+            'MunicipioNorm': municipio_norm,
+            'CartoriosArquivo': qtd_arquivo,
+            'CartoriosSite': qtd_site,
+            'DifCartorios': dif,
+            'StatusCartorio': status
+        })
+    df_validacao = pd.DataFrame(rows)
+    aba = 'validacao_cartorio'
+elif tipo_vara:
+    df_arquivo = contagem_arquivo(df, 'Vara')
+    rows = []
+    # print("\nDEBUG: Chaves do arquivo:")
+    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
+    # print("\nDEBUG: Chaves do site:")
+    # print([k for k in contagem_site_total.keys()])
+    for _, row in df_arquivo.iterrows():
+        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['VarasArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('VarasSite', 0)
+        dif = qtd_arquivo - qtd_site
+        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
+        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
+        rows.append({
+            'Estado': estado,
+            'Municipio': municipio_exib,
+            'MunicipioNorm': municipio_norm,
+            'VarasArquivo': qtd_arquivo,
+            'VarasSite': qtd_site,
+            'DifVaras': dif,
+            'StatusVara': status
+        })
+    df_validacao = pd.DataFrame(rows)
+    aba = 'validacao_vara'
+elif tipo_ambos:
+    df_arquivo = contagem_arquivo(df, 'Ambos')
+    rows = []
+    # print("\nDEBUG: Chaves do arquivo:")
+    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
+    # print("\nDEBUG: Chaves do site:")
+    # print([k for k in contagem_site_total.keys()])
+    for _, row in df_arquivo.iterrows():
+        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['CartorioEVaraArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('CartoriosEVaraSite', 0)
+        dif = qtd_arquivo - qtd_site
+        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
+        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
+        rows.append({
+            'Estado': estado,
+            'Municipio': municipio_exib,
+            'MunicipioNorm': municipio_norm,
+            'CartorioEVaraArquivo': qtd_arquivo,
+            'CartoriosEVaraSite': qtd_site,
+            'DifCartorioEVara': dif,
+            'StatusCartorioEVara': status
+        })
+    df_validacao = pd.DataFrame(rows)
+    aba = 'validacao_cartorio_evara'
+else:
+    print("Tipo de arquivo não reconhecido para validação.")
+    exit()
 
-print("\nContagem real do site (independente):")
-print(f"Total no site: {total_site}")
-print(f"Cartórios no site: {total_cartorios_site}")
-print(f"Varas no site: {total_varas_site}")
-
-print("\nDiferença (arquivo - site):")
-print(f"Total: {total_arquivo - total_site}")
-print(f"Cartórios: {total_cartorios_arquivo - total_cartorios_site}")
-print(f"Varas: {total_varas_arquivo - total_varas_site}")
+# Salvar relatório na pasta data/validacao com nome baseado no arquivo original
+import os
+dir_validacao = os.path.join('data', 'validacao')
+os.makedirs(dir_validacao, exist_ok=True)
+nome_base = os.path.splitext(os.path.basename(arquivo))[0]
+nome_relatorio = f"validacao_{nome_base}.xlsx"
+caminho_relatorio = os.path.join(dir_validacao, nome_relatorio)
+df_validacao.to_excel(caminho_relatorio, index=False, sheet_name=aba)
+print(f"\nRelatório de validação salvo em: {caminho_relatorio} (aba: {aba})")
