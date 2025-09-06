@@ -1,31 +1,7 @@
-import unicodedata
-def normalizar_campo(valor, manter_ponto_virgula=False):
-    if not isinstance(valor, str):
-        return valor
-    valor = valor.lower()
-    if manter_ponto_virgula:
-        valor = unicodedata.normalize('NFKD', valor)
-        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
-        valor = ''.join([c for c in valor if c.isalnum() or c.isspace() or c == ';'])
-    else:
-        valor = unicodedata.normalize('NFKD', valor)
-        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
-        valor = ''.join([c for c in valor if c.isalnum() or c.isspace()])
-    valor = ' '.join(valor.split())
-    return valor
-
-def normalizar_nome_campo(nome):
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
-    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
-    partes = nome.lower().split()
-    if not partes:
-        return ''
-    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
-
 import os
-import re
 import time
+import unicodedata
+import re
 from datetime import datetime
 import pandas as pd
 from dotenv import load_dotenv
@@ -33,6 +9,8 @@ import concurrent.futures
 from scripts.raspagem_core import extrair_links_municipios, extrair_dados_municipio
 
 load_dotenv()
+
+
 
 # Lista de estados brasileiros
 estados = [
@@ -65,6 +43,31 @@ def slugify(text):
     text = re.sub(r'[úùûü]', 'u', text)
     text = re.sub(r'[^a-z0-9_]', '_', text)
     return text
+
+
+def normalizar_campo(valor, manter_ponto_virgula=False):
+    if not isinstance(valor, str):
+        return valor
+    valor = valor.lower()
+    if manter_ponto_virgula:
+        valor = unicodedata.normalize('NFKD', valor)
+        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
+        valor = ''.join([c for c in valor if c.isalnum() or c.isspace() or c == ';'])
+    else:
+        valor = unicodedata.normalize('NFKD', valor)
+        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
+        valor = ''.join([c for c in valor if c.isalnum() or c.isspace()])
+    valor = ' '.join(valor.split())
+    return valor
+
+def normalizar_nome_campo(nome):
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    partes = nome.lower().split()
+    if not partes:
+        return ''
+    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
 
 # Função para gerar nome de arquivo com data e hora
 def nome_arquivo_datahora(nome_base, extensao):

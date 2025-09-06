@@ -1,13 +1,3 @@
-def normalizar_nome_campo(nome):
-    import unicodedata
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
-    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
-    partes = nome.lower().split()
-    if not partes:
-        return ''
-    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
-
 import sys
 import os
 import pandas as pd
@@ -16,21 +6,6 @@ from bs4 import BeautifulSoup
 from collections import defaultdict
 import unicodedata
 
-import unicodedata
-# Função para normalizar nomes (remove acentos, caracteres especiais, minúsculo)
-def normalize_nome(nome, estado=None):
-    if not isinstance(nome, str):
-        return ''
-    nome = nome.lower()
-    if estado:
-        sufixo = f'em {estado.lower()}'
-        if nome.endswith(sufixo):
-            nome = nome[: -len(sufixo)].strip()
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
-    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
-    nome = ' '.join(nome.split())
-    return nome
 
 # Lista de estados brasileiros
 estados = [
@@ -47,9 +22,6 @@ if not arquivo:
     exit()
 
 
-
-
-
 # Leitura do arquivo
 if arquivo.endswith('.csv'):
     df = pd.read_csv(arquivo)
@@ -62,16 +34,54 @@ else:
 
 # Detecta automaticamente os estados presentes no arquivo
 estados_comparar = sorted(df['estado'].dropna().unique())
-print(f"\nEstados detectados no arquivo: {', '.join(estados_comparar)}")
 
+# Função para normalizar nomes de colunas para camelCase, sem acentos e sem caracteres especiais
+def normalizar_nome_campo(nome):
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    partes = nome.lower().split()
+    if not partes:
+        return ''
+    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
+
+# Função para normalizar nomes (remove acentos, caracteres especiais, minúsculo)
+def normalize_nome(nome, estado=None):
+    if not isinstance(nome, str):
+        return ''
+    nome = nome.lower()
+    if estado:
+        sufixo = f'em {estado.lower()}'
+        if nome.endswith(sufixo):
+            nome = nome[: -len(sufixo)].strip()
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    nome = ' '.join(nome.split())
+    return nome
 
 # Substitui o campo municipio pelo valor normalizado
 df['municipio'] = df.apply(lambda row: normalize_nome(row['municipio'], row['estado']), axis=1)
 
+# Padroniza os valores da coluna 'tipo' para 'cartorio' e 'vara' (minúsculo, sem acento ou caractere especial)
+def padronizar_tipo(valor):
+    if not isinstance(valor, str):
+        return valor
+    valor = unicodedata.normalize('NFKD', valor)
+    valor = ''.join([c for c in valor if not unicodedata.combining(c)])
+    valor = ''.join([c for c in valor if c.isalnum() or c.isspace()])
+    valor = valor.lower().strip()
+    if valor == 'cartorio' or valor == 'cartorio judicial':
+        return 'cartorio'
+    if valor == 'vara':
+        return 'vara'
+    return valor
+df['tipo'] = df['tipo'].apply(padronizar_tipo)
+
 # Identificar o(s) tipo(s) presentes no arquivo
 tipos_arquivo = set(df['tipo'].unique())
-tipo_cartorio = 'Cartório' in tipos_arquivo and len(tipos_arquivo) == 1
-tipo_vara = 'Vara' in tipos_arquivo and len(tipos_arquivo) == 1
+tipo_cartorio = 'cartorio' in tipos_arquivo and len(tipos_arquivo) == 1
+tipo_vara = 'vara' in tipos_arquivo and len(tipos_arquivo) == 1
 tipo_ambos = len(tipos_arquivo) > 1
 
 # Contagem do arquivo por Estado e Município
@@ -179,24 +189,39 @@ elif tipo_vara:
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_vara'
 elif tipo_ambos:
-    df_arquivo = contagem_arquivo(df, 'Ambos')
+    # Gerar linhas separadas para cartório e vara
+    df_cartorio = df[df['tipo'] == 'cartorio'].groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
+    df_vara = df[df['tipo'] == 'vara'].groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
     rows = []
-    # print("\nDEBUG: Chaves do arquivo:")
-    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
-    # print("\nDEBUG: Chaves do site:")
-    # print([k for k in contagem_site_total.keys()])
-    for _, row in df_arquivo.iterrows():
-        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartorioEVaraArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosEVaraSite', 0)
+    # Cartórios
+    for _, row in df_cartorio.iterrows():
+        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartoriosArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosSite', 0)
         dif = qtd_arquivo - qtd_site
         status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
         rows.append({
             'estado': estado,
             'municipio': municipio,
-            'cartorioEVaraArquivo': qtd_arquivo,
-            'cartoriosEVaraSite': qtd_site,
-            'difCartorioEVara': dif,
-            'statusCartorioEVara': status
+            'tipo': 'cartorio',
+            'quantidadeArquivo': qtd_arquivo,
+            'quantidadeSite': qtd_site,
+            'diferenca': dif,
+            'status': status
+        })
+    # Varas
+    for _, row in df_vara.iterrows():
+        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['varasArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio), {}).get('VarasSite', 0)
+        dif = qtd_arquivo - qtd_site
+        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
+        rows.append({
+            'estado': estado,
+            'municipio': municipio,
+            'tipo': 'vara',
+            'quantidadeArquivo': qtd_arquivo,
+            'quantidadeSite': qtd_site,
+            'diferenca': dif,
+            'status': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio_evara'
