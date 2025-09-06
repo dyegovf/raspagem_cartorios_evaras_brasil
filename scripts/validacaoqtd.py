@@ -1,3 +1,12 @@
+def normalizar_nome_campo(nome):
+    import unicodedata
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    partes = nome.lower().split()
+    if not partes:
+        return ''
+    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
 
 import sys
 import os
@@ -50,15 +59,17 @@ else:
     print("Arquivo deve ser .csv ou .xlsx")
     exit()
 
+
 # Detecta automaticamente os estados presentes no arquivo
-estados_comparar = sorted(df['Estado'].dropna().unique())
+estados_comparar = sorted(df['estado'].dropna().unique())
 print(f"\nEstados detectados no arquivo: {', '.join(estados_comparar)}")
 
-# Adiciona coluna normalizada logo após leitura
-df['MunicipioNorm'] = df.apply(lambda row: normalize_nome(row['Município'], row['Estado']), axis=1)
+
+# Substitui o campo municipio pelo valor normalizado
+df['municipio'] = df.apply(lambda row: normalize_nome(row['municipio'], row['estado']), axis=1)
 
 # Identificar o(s) tipo(s) presentes no arquivo
-tipos_arquivo = set(df['Tipo'].unique())
+tipos_arquivo = set(df['tipo'].unique())
 tipo_cartorio = 'Cartório' in tipos_arquivo and len(tipos_arquivo) == 1
 tipo_vara = 'Vara' in tipos_arquivo and len(tipos_arquivo) == 1
 tipo_ambos = len(tipos_arquivo) > 1
@@ -66,15 +77,14 @@ tipo_ambos = len(tipos_arquivo) > 1
 # Contagem do arquivo por Estado e Município
 def contagem_arquivo(df, tipo):
     df = df.copy()
-    df['MunicipioNorm'] = df.apply(lambda row: normalize_nome(row['Município'], row['Estado']), axis=1)
     if tipo == 'Cartório':
-        filtro = df[df['Tipo'] == 'Cartório']
-        return filtro.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='CartoriosArquivo')
+        filtro = df[df['tipo'] == 'Cartório']
+        return filtro.groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
     elif tipo == 'Vara':
-        filtro = df[df['Tipo'] == 'Vara']
-        return filtro.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='VarasArquivo')
+        filtro = df[df['tipo'] == 'Vara']
+        return filtro.groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
     else:
-        return df.groupby(['Estado', 'MunicipioNorm']).size().reset_index(name='CartorioEVaraArquivo')
+        return df.groupby(['estado', 'municipio']).size().reset_index(name='cartorioEVaraArquivo')
 
 # Contagem do site por Estado e Município
 def contagem_site(sigla_estado):
@@ -98,6 +108,7 @@ def contagem_site(sigla_estado):
         path = link.split("cartorios-de-")[-1].split(f"-{sigla_estado.lower()}")[0]
         municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
         municipio_norm = normalize_nome(municipio)
+        municipio = municipio_norm
         # Cartórios
         div_cartorios = soup_mun.find('div', id='cartorios')
         if div_cartorios:
@@ -131,20 +142,17 @@ if tipo_cartorio:
     # print("\nDEBUG: Chaves do site:")
     # print([k for k in contagem_site_total.keys()])
     for _, row in df_arquivo.iterrows():
-        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['CartoriosArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('CartoriosSite', 0)
+        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartoriosArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosSite', 0)
         dif = qtd_arquivo - qtd_site
-        # Nome original do município
-        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
         status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
         rows.append({
-            'Estado': estado,
-            'Municipio': municipio_exib,
-            'MunicipioNorm': municipio_norm,
-            'CartoriosArquivo': qtd_arquivo,
-            'CartoriosSite': qtd_site,
-            'DifCartorios': dif,
-            'StatusCartorio': status
+            'estado': estado,
+            'municipio': municipio,
+            'cartoriosArquivo': qtd_arquivo,
+            'cartoriosSite': qtd_site,
+            'difCartorios': dif,
+            'statusCartorio': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio'
@@ -156,19 +164,17 @@ elif tipo_vara:
     # print("\nDEBUG: Chaves do site:")
     # print([k for k in contagem_site_total.keys()])
     for _, row in df_arquivo.iterrows():
-        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['VarasArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('VarasSite', 0)
+        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['varasArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio), {}).get('VarasSite', 0)
         dif = qtd_arquivo - qtd_site
-        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
         status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
         rows.append({
-            'Estado': estado,
-            'Municipio': municipio_exib,
-            'MunicipioNorm': municipio_norm,
-            'VarasArquivo': qtd_arquivo,
-            'VarasSite': qtd_site,
-            'DifVaras': dif,
-            'StatusVara': status
+            'estado': estado,
+            'municipio': municipio,
+            'varasArquivo': qtd_arquivo,
+            'varasSite': qtd_site,
+            'difVaras': dif,
+            'statusVara': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_vara'
@@ -180,19 +186,17 @@ elif tipo_ambos:
     # print("\nDEBUG: Chaves do site:")
     # print([k for k in contagem_site_total.keys()])
     for _, row in df_arquivo.iterrows():
-        estado, municipio_norm, qtd_arquivo = row['Estado'], row['MunicipioNorm'], row['CartorioEVaraArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio_norm), {}).get('CartoriosEVaraSite', 0)
+        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartorioEVaraArquivo']
+        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosEVaraSite', 0)
         dif = qtd_arquivo - qtd_site
-        municipio_exib = df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)]['Município'].iloc[0] if not df[(df['Estado'] == estado) & (df['MunicipioNorm'] == municipio_norm)].empty else ''
         status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
         rows.append({
-            'Estado': estado,
-            'Municipio': municipio_exib,
-            'MunicipioNorm': municipio_norm,
-            'CartorioEVaraArquivo': qtd_arquivo,
-            'CartoriosEVaraSite': qtd_site,
-            'DifCartorioEVara': dif,
-            'StatusCartorioEVara': status
+            'estado': estado,
+            'municipio': municipio,
+            'cartorioEVaraArquivo': qtd_arquivo,
+            'cartoriosEVaraSite': qtd_site,
+            'difCartorioEVara': dif,
+            'statusCartorioEVara': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio_evara'
@@ -202,10 +206,13 @@ else:
 
 # Salvar relatório na pasta data/validacao com nome baseado no arquivo original
 import os
+from datetime import datetime
 dir_validacao = os.path.join('data', 'validacao')
 os.makedirs(dir_validacao, exist_ok=True)
 nome_base = os.path.splitext(os.path.basename(arquivo))[0]
-nome_relatorio = f"validacao_{nome_base}.xlsx"
+datahora = datetime.now().strftime('%Y%m%d_%H%M')
+nome_relatorio = f"{datahora}_validacao_{nome_base}.xlsx"
 caminho_relatorio = os.path.join(dir_validacao, nome_relatorio)
+df_validacao.columns = [normalizar_nome_campo(c) for c in df_validacao.columns]
 df_validacao.to_excel(caminho_relatorio, index=False, sheet_name=aba)
 print(f"\nRelatório de validação salvo em: {caminho_relatorio} (aba: {aba})")

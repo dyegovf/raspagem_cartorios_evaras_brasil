@@ -1,3 +1,28 @@
+import unicodedata
+def normalizar_campo(valor, manter_ponto_virgula=False):
+    if not isinstance(valor, str):
+        return valor
+    valor = valor.lower()
+    if manter_ponto_virgula:
+        valor = unicodedata.normalize('NFKD', valor)
+        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
+        valor = ''.join([c for c in valor if c.isalnum() or c.isspace() or c == ';'])
+    else:
+        valor = unicodedata.normalize('NFKD', valor)
+        valor = ''.join([c for c in valor if not unicodedata.combining(c)])
+        valor = ''.join([c for c in valor if c.isalnum() or c.isspace()])
+    valor = ' '.join(valor.split())
+    return valor
+
+def normalizar_nome_campo(nome):
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    partes = nome.lower().split()
+    if not partes:
+        return ''
+    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
+
 import os
 import re
 import time
@@ -103,6 +128,7 @@ campos_esperados = [
     'Estado', 'Município', 'Cartório', 'Serviços', 'Status do Cartório', 'Tipo',
     'Escrivão Titular', 'Data de Criação', 'CNS'
 ]
+campos_esperados_camel = [normalizar_nome_campo(c) for c in campos_esperados]
 
 def processar_municipio(args):
     url_municipio, estado, tipo_escolhido = args
@@ -127,45 +153,49 @@ for estado in estados_selecionados:
 
         print(f"\n✅ Estado {estado} concluído: {total}/{total}")
 
+
         if formato_escolhido == "csv_unico":
             todos_dados.extend(dados_estado)
 
         elif formato_escolhido == "xls_unico":
             todos_dados.extend(dados_estado)
 
-        elif formato_escolhido == "csv_porArquivo":
-            df = pd.DataFrame(dados_estado)
-            for campo in campos_esperados:
-                if campo not in df.columns:
-                    df[campo] = 'Não informado'
-            df = df[campos_esperados]
-            if tipo_escolhido == "Cartório":
-                nome_base = f"cartorios_{estado}"
-            elif tipo_escolhido == "Vara":
-                nome_base = f"varas_{estado}"
-            else:
-                nome_base = f"cartorios_e_varas_{estado}"
-            nome_arquivo = nome_arquivo_datahora(nome_base, "csv")
-            caminho_csv = os.path.join(pasta_destino, nome_arquivo)
-            df.to_csv(caminho_csv, index=False, encoding='utf-8-sig')
-            print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
+        elif formato_escolhido == "csv_porArquivo" or formato_escolhido == "xls_porArquivo":
+            # Normalizar os dados antes de salvar
+            for registro in dados_estado:
+                for campo in campos_esperados:
+                    if campo not in registro:
+                        registro[campo] = 'Não informado'
+                for campo in campos_esperados:
+                    if campo in ['Cartório', 'Data de Criação', 'CNS']:
+                        continue
+                    if campo == 'Serviços':
+                        registro[campo] = normalizar_campo(registro[campo], manter_ponto_virgula=True)
+                    else:
+                        registro[campo] = normalizar_campo(registro[campo])
 
-        elif formato_escolhido == "xls_porArquivo":
             df = pd.DataFrame(dados_estado)
             for campo in campos_esperados:
                 if campo not in df.columns:
                     df[campo] = 'Não informado'
             df = df[campos_esperados]
+            df.columns = campos_esperados_camel
             if tipo_escolhido == "Cartório":
                 nome_base = f"cartorios_{estado}"
             elif tipo_escolhido == "Vara":
                 nome_base = f"varas_{estado}"
             else:
                 nome_base = f"cartorios_e_varas_{estado}"
-            nome_arquivo = nome_arquivo_datahora(nome_base, "xlsx")
-            caminho_xlsx = os.path.join(pasta_destino, nome_arquivo)
-            df.to_excel(caminho_xlsx, index=False)
-            print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
+            if formato_escolhido == "csv_porArquivo":
+                nome_arquivo = nome_arquivo_datahora(nome_base, "csv")
+                caminho_csv = os.path.join(pasta_destino, nome_arquivo)
+                df.to_csv(caminho_csv, index=False, encoding='utf-8-sig')
+                print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
+            else:
+                nome_arquivo = nome_arquivo_datahora(nome_base, "xlsx")
+                caminho_xlsx = os.path.join(pasta_destino, nome_arquivo)
+                df.to_excel(caminho_xlsx, index=False)
+                print(f"✅ Arquivo gerado para {estado} ({len(dados_estado)} registros)")
 
     except Exception as e:
         print(f"\n⚠️ Erro ao processar {estado}: {e}")
@@ -174,9 +204,18 @@ for registro in todos_dados:
     for campo in campos_esperados:
         if campo not in registro:
             registro[campo] = 'Não informado'
+    # Normalização dos campos (exceto Cartório, Data de Criação e CNS)
+    for campo in campos_esperados:
+        if campo in ['Cartório', 'Data de Criação', 'CNS']:
+            continue
+        if campo == 'Serviços':
+            registro[campo] = normalizar_campo(registro[campo], manter_ponto_virgula=True)
+        else:
+            registro[campo] = normalizar_campo(registro[campo])
 
 if formato_escolhido == "csv_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
+    df.columns = campos_esperados_camel
     if tipo_escolhido == "Cartório":
         nome_base = "cartorios_brasil"
     elif tipo_escolhido == "Vara":
@@ -190,6 +229,7 @@ if formato_escolhido == "csv_unico":
 
 elif formato_escolhido == "xls_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
+    df.columns = campos_esperados_camel
     if tipo_escolhido == "Cartório":
         nome_base = "cartorios_brasil"
     elif tipo_escolhido == "Vara":
