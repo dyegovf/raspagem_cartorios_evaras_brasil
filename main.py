@@ -168,18 +168,11 @@ for idx_estado, estado in enumerate(estados_selecionados, 1):
             todos_dados.extend(dados_estado)
 
         elif formato_escolhido == "csv_porArquivo" or formato_escolhido == "xls_porArquivo":
-            # Normalizar os dados antes de salvar
+            # Preencher campos ausentes, mas NÃO normalizar os valores
             for registro in dados_estado:
                 for campo in campos_esperados:
                     if campo not in registro:
                         registro[campo] = 'Não informado'
-                for campo in campos_esperados:
-                    if campo in ['Cartório', 'Data de Criação', 'CNS']:
-                        continue
-                    if campo == 'Serviços':
-                        registro[campo] = normalizar_campo(registro[campo], manter_ponto_virgula=True)
-                    else:
-                        registro[campo] = normalizar_campo(registro[campo])
 
             df = pd.DataFrame(dados_estado)
             for campo in campos_esperados:
@@ -211,14 +204,6 @@ for registro in todos_dados:
     for campo in campos_esperados:
         if campo not in registro:
             registro[campo] = 'Não informado'
-    # Normalização dos campos (exceto Cartório, Data de Criação e CNS)
-    for campo in campos_esperados:
-        if campo in ['Cartório', 'Data de Criação', 'CNS']:
-            continue
-        if campo == 'Serviços':
-            registro[campo] = normalizar_campo(registro[campo], manter_ponto_virgula=True)
-        else:
-            registro[campo] = normalizar_campo(registro[campo])
 
 if formato_escolhido == "csv_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]

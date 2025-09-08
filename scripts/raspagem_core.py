@@ -24,7 +24,7 @@ def extrair_links_municipios(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
     response = requests.get(url_estado, headers=headers)
-    time.sleep(0.1)
+    time.sleep(0.3)
     soup = BeautifulSoup(response.content, 'html.parser')
     links = []
     for a in soup.find_all('a', href=True):
@@ -42,7 +42,7 @@ def extrair_nome_municipio(url_municipio, sigla_estado):
 def extrair_dados_municipio(url_municipio, sigla_estado):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
     response = requests.get(url_municipio, headers=headers)
-    time.sleep(0.1)
+    time.sleep(0.3)
     soup = BeautifulSoup(response.content, 'html.parser')
     # Nova lógica: prioriza breadcrumb, depois <h1>, depois URL
     municipio = None
@@ -58,7 +58,7 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
                 municipio = m.group(1).strip()
         if not municipio:
             municipio = extrair_nome_municipio(url_municipio, sigla_estado)
-    municipio = normalize_nome(municipio, sigla_estado)
+    # NÃO normalizar o nome do município, manter como extraído do site
 
     dados = []
     container_cartorios = soup.find('div', id='cartorios')
@@ -111,7 +111,7 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
 
             dados.append({
                 'Estado': sigla_estado,
-                'Município': municipio,  # já normalizado
+                'Município': municipio,  # agora sem normalização
                 'Cartório': nome,
                 'Serviços': servicos,
                 'Status do Cartório': status,
@@ -172,7 +172,7 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
 
             dados.append({
                 'Estado': sigla_estado,
-                'Município': municipio,  # já normalizado
+                'Município': municipio,  # agora sem normalização
                 'Cartório': nome,
                 'Serviços': servicos,
                 'Status do Cartório': status,

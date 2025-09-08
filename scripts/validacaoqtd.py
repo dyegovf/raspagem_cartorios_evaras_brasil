@@ -3,55 +3,18 @@ import os
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from collections import defaultdict
 import unicodedata
 from datetime import datetime
+import concurrent.futures
+import numpy as np
+import openpyxl
+import time
 
-# Lista de estados brasileiros
-estados = [
-    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
-    'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
-    'SP', 'SE', 'TO'
-]
-
-print("Informe o caminho do arquivo CSV/XLSX gerado para comparar:")
-arquivo = input("Arquivo: ").strip()
-if not arquivo:
-    print("Arquivo não informado. Saindo.")
-    exit()
-
-# Leitura do arquivo
-if arquivo.endswith('.csv'):
-    df = pd.read_csv(arquivo)
-elif arquivo.endswith('.xlsx'):
-    df = pd.read_excel(arquivo)
-else:
-    print("Arquivo deve ser .csv ou .xlsx")
-    exit()
-
-
-# Padroniza a coluna 'estado' para maiúsculo para garantir correspondência correta
-df['estado'] = df['estado'].str.upper()
-
-# Detecta automaticamente os estados presentes no arquivo
-estados_comparar = sorted(df['estado'].dropna().unique())
-
-# Função para normalizar nomes de colunas para camelCase, sem acentos e sem caracteres especiais
-def normalizar_nome_campo(nome):
-    nome = unicodedata.normalize('NFKD', nome)
-    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
-    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
-    partes = nome.lower().split()
-    if not partes:
-        return ''
-    return partes[0] + ''.join(p.capitalize() for p in partes[1:])
-
-# Função para normalizar nomes (remove acentos, caracteres especiais, minúsculo)
+# -------------------- FUNÇÕES --------------------
 def normalize_nome(nome, estado=None):
     if not isinstance(nome, str):
         return ''
     nome = nome.lower()
-    # Só remove o sufixo se for exatamente ' em {estado}' (com espaço antes)
     if estado:
         sufixo = f' em {estado.lower()}'
         if nome.endswith(sufixo):
@@ -62,48 +25,16 @@ def normalize_nome(nome, estado=None):
     nome = ' '.join(nome.split())
     return nome
 
-# Substitui o campo municipio pelo valor normalizado
-df['municipio'] = df.apply(lambda row: normalize_nome(row['municipio'], row['estado']), axis=1)
+def normalize_cns(cns):
+    if not isinstance(cns, str):
+        return ''
+    return cns.replace('.', '').replace('-', '').replace(' ', '').strip()
 
-# Padroniza os valores da coluna 'tipo' para 'cartorio' e 'vara' (minúsculo, sem acento ou caractere especial)
-def padronizar_tipo(valor):
-    if not isinstance(valor, str):
-        return valor
-    valor = unicodedata.normalize('NFKD', valor)
-    valor = ''.join([c for c in valor if not unicodedata.combining(c)])
-    valor = ''.join([c for c in valor if c.isalnum() or c.isspace()])
-    valor = valor.lower().strip()
-    if valor == 'cartorio' or valor == 'cartorio judicial':
-        return 'cartorio'
-    if valor == 'vara':
-        return 'vara'
-    return valor
-df['tipo'] = df['tipo'].apply(padronizar_tipo)
-
-# Identificar o(s) tipo(s) presentes no arquivo
-tipos_arquivo = set(df['tipo'].unique())
-tipo_cartorio = 'cartorio' in tipos_arquivo and len(tipos_arquivo) == 1
-tipo_vara = 'vara' in tipos_arquivo and len(tipos_arquivo) == 1
-tipo_ambos = len(tipos_arquivo) > 1
-
-# Contagem do arquivo por Estado e Município
-def contagem_arquivo(df, tipo):
-    df = df.copy()
-    if tipo == 'cartorio':
-        filtro = df[df['tipo'] == 'cartorio']
-        return filtro.groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
-    elif tipo == 'vara':
-        filtro = df[df['tipo'] == 'vara']
-        return filtro.groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
-    else:
-        return df.groupby(['estado', 'municipio']).size().reset_index(name='cartorioEVaraArquivo')
-
-# Contagem do site por Estado e Município
-def contagem_site(sigla_estado):
+def contagem_site_cns(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
     response = requests.get(url_estado)
     soup = BeautifulSoup(response.content, 'html.parser')
-    resultado = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
+    resultado = []
     cidades_div = soup.find('div', id='cidades')
     if not cidades_div:
         return resultado
@@ -120,188 +51,282 @@ def contagem_site(sigla_estado):
         path = link.split("cartorios-de-")[-1].split(f"-{sigla_estado.lower()}")[0]
         municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
         municipio_norm = normalize_nome(municipio)
-        municipio = municipio_norm
         # Cartórios
         div_cartorios = soup_mun.find('div', id='cartorios')
         if div_cartorios:
-            cartorios = div_cartorios.find_all('div', class_='row', id=True)
-            resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] = len(cartorios)
-        else:
-            resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] = 0
+            blocos = div_cartorios.find_all('div', class_='row')
+            for bloco in blocos:
+                nome_tag = bloco.find('h3')
+                nome = nome_tag.text.strip() if nome_tag else ''
+                cns = 'Não informado'
+                cns_tag = bloco.find('strong', string=lambda s: s and "CNS" in s)
+                if cns_tag:
+                    cns_val = cns_tag.next_sibling
+                    if cns_val:
+                        cns = cns_val.strip()
+                tipo = 'cartorio'
+                resultado.append({
+                    'estado': sigla_estado,
+                    'municipio': municipio,
+                    'municipio_norm': municipio_norm,
+                    'tipo': tipo,
+                    'cartorio': nome,
+                    'cns': cns,
+                    'cns_norm': normalize_cns(cns)
+                })
         # Varas
         div_varas = soup_mun.find('div', id='varas')
         if div_varas:
-            varas = div_varas.find_all('div', class_='row', id=True)
-            resultado[(sigla_estado, municipio_norm)]['VarasSite'] = len(varas)
-        else:
-            resultado[(sigla_estado, municipio_norm)]['VarasSite'] = 0
-        resultado[(sigla_estado, municipio_norm)]['CartoriosEVaraSite'] = resultado[(sigla_estado, municipio_norm)]['CartoriosSite'] + resultado[(sigla_estado, municipio_norm)]['VarasSite']
+            blocos = div_varas.find_all('div', class_='row')
+            for bloco in blocos:
+                nome_tag = bloco.find('h3')
+                nome = nome_tag.text.strip() if nome_tag else ''
+                cns = 'Não informado'
+                cns_tag = bloco.find('strong', string=lambda s: s and "CNS" in s)
+                if cns_tag:
+                    cns_val = cns_tag.next_sibling
+                    if cns_val:
+                        cns = cns_val.strip()
+                tipo = 'vara'
+                resultado.append({
+                    'estado': sigla_estado,
+                    'municipio': municipio,
+                    'municipio_norm': municipio_norm,
+                    'tipo': tipo,
+                    'cartorio': nome,
+                    'cns': cns,
+                    'cns_norm': normalize_cns(cns)
+                })
     return resultado
 
-# Agregar contagem do site para todos os estados
-contagem_site_total = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
-import concurrent.futures
+# -------------------- CONSTANTES --------------------
+estados = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+    'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+    'SP', 'SE', 'TO'
+]
 
-def processar_municipio_site(args):
-    cidade, estado = args
-    a_tag = cidade.find('a', href=True)
-    if not a_tag:
-        return None
-    # Extrai o nome do município diretamente do texto do link na página do estado
-    municipio = a_tag.text.strip()
-    # Remove prefixos como "Cartórios em " ou "Cartórios de "
-    import re
-    municipio = re.sub(r'^Cartórios (em|de) ', '', municipio, flags=re.IGNORECASE)
-    municipio_norm = normalize_nome(municipio)
-    link = a_tag['href']
-    url_municipio = f"https://cartorios.info/{link}"
-    try:
-        resp = requests.get(url_municipio)
-        soup_mun = BeautifulSoup(resp.content, 'html.parser')
-        # Cartórios
-        div_cartorios = soup_mun.find('div', id='cartorios')
-        cartorios_count = len(div_cartorios.find_all('div', class_='row', id=True)) if div_cartorios else 0
-        # Varas
-        div_varas = soup_mun.find('div', id='varas')
-        varas_count = len(div_varas.find_all('div', class_='row', id=True)) if div_varas else 0
-        return (estado, municipio_norm, cartorios_count, varas_count)
-    except Exception:
-        return (estado, None, 0, 0)
+# -------------------- CÓDIGO PRINCIPAL --------------------
+if __name__ == "__main__":
+    print("Informe o caminho do arquivo CSV/XLSX gerado para comparar:")
+    arquivo = input("Arquivo: ").strip()
+    if not arquivo:
+        print("Arquivo não informado. Saindo.")
+        exit()
 
-for idx_estado, estado in enumerate(estados_comparar, 1):
-    print(f"\nValidando {estado} [{str(idx_estado).zfill(2)}/{str(len(estados_comparar)).zfill(2)}] no site...")
-    resultado_estado = defaultdict(lambda: {'CartoriosSite': 0, 'VarasSite': 0, 'CartoriosEVaraSite': 0})
-    url_estado = f"https://cartorios.info/cartorios-{estado.lower()}.html"
-    response = requests.get(url_estado)
-    soup = BeautifulSoup(response.content, 'html.parser')
-    cidades_div = soup.find('div', id='cidades')
-    if not cidades_div:
-        continue
-    cidades = cidades_div.find_all('div', class_='cidades')
-    total_municipios = len(cidades)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        args_list = [(cidade, estado) for cidade in cidades]
-        futuros = executor.map(processar_municipio_site, args_list)
-        for idx_mun, resultado in enumerate(futuros, 1):
-            print(f"- Municípios processados: {idx_mun}/{total_municipios}", end='\r')
-            if resultado is None:
-                continue
-            estado_res, municipio_norm, cartorios_count, varas_count = resultado
-            if municipio_norm is None:
-                continue
-            resultado_estado[(estado_res, municipio_norm)]['CartoriosSite'] = cartorios_count
-            resultado_estado[(estado_res, municipio_norm)]['VarasSite'] = varas_count
-            resultado_estado[(estado_res, municipio_norm)]['CartoriosEVaraSite'] = cartorios_count + varas_count
-    contagem_site_total.update(resultado_estado)
-    print(f"- Municípios processados: {total_municipios}/{total_municipios}")
+    # Leitura do arquivo
+    if arquivo.endswith('.csv'):
+        df = pd.read_csv(arquivo)
+    elif arquivo.endswith('.xlsx'):
+        df = pd.read_excel(arquivo)
+    else:
+        print("Arquivo deve ser .csv ou .xlsx")
+        exit()
 
 
-# Log simples para comparar nomes de municípios do arquivo e do site
-print("\n--- LOG DE COMPARAÇÃO DE NOMES DE MUNICÍPIOS ---")
-municipios_arquivo = set(df['municipio'].unique())
-municipios_site = set()
-for k in contagem_site_total.keys():
-    if k[0] == estados_comparar[0]:
-        municipios_site.add(k[1])
 
-print(f"Total municípios no arquivo: {len(municipios_arquivo)}")
-print(f"Total municípios no site: {len(municipios_site)}")
 
-print("\nMunicípios do arquivo que NÃO estão no site:")
-for m in sorted(municipios_arquivo - municipios_site):
-    print(f"  - {m}")
+    # Função de normalização idêntica para ambos os lados
+    def normalizar_nome_coluna(nome):
+        nome = unicodedata.normalize('NFKD', str(nome))
+        nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+        nome = nome.lower().replace(' ', '').replace('í','i').replace('ú','u').replace('é','e').replace('á','a').replace('ã','a').replace('ç','c').replace('ô','o').replace('ó','o').replace('ê','e').replace('â','a').replace('õ','o').replace('à','a')
+        return nome
+    df.columns = [normalizar_nome_coluna(col) for col in df.columns]
+    df['estado'] = df['estado'].str.upper()
+    # Garante que todas as colunas de comparação existam no arquivo
+    for col in ['municipio', 'cartorio', 'tipo', 'cns', 'escrivaotitular']:
+        if col not in df.columns:
+            df[col] = 'Não informado'
+    # Normaliza campos de comparação no arquivo
+    df['municipio_norm'] = df['municipio'].apply(lambda x: normalize_nome(x))
+    df['cartorio_norm'] = df['cartorio'].apply(lambda x: normalize_nome(x))
+    df['tipo_norm'] = df['tipo'].apply(lambda x: normalize_nome(x))
+    df['cns_norm'] = df['cns'].apply(lambda x: normalize_cns(x))
+    df['escrivaotitular_norm'] = df['escrivaotitular'].apply(lambda x: normalize_nome(x))
 
-print("\nMunicípios do site que NÃO estão no arquivo:")
-for m in sorted(municipios_site - municipios_arquivo):
-    print(f"  - {m}")
-print("--- FIM DO LOG ---\n")
+    # Detecta automaticamente os estados presentes no arquivo
+    estados_comparar = sorted(df['estado'].dropna().unique())
 
-# Gerar DataFrame de validação
-if tipo_cartorio:
-    df_arquivo = contagem_arquivo(df, 'cartorio')
-    rows = []
-    for _, row in df_arquivo.iterrows():
-        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartoriosArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosSite', 0)
-        dif = qtd_arquivo - qtd_site
-        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
-        rows.append({
-            'estado': estado,
-            'municipio': municipio,
-            'tipo': 'cartorio',
-            'quantidadeArquivo': qtd_arquivo,
-            'quantidadeSite': qtd_site,
-            'diferenca': dif,
-            'status': status
-        })
-    df_validacao = pd.DataFrame(rows)
-    aba = 'validacao_cartorio'
-elif tipo_vara:
-    df_arquivo = contagem_arquivo(df, 'vara')
-    rows = []
-    for _, row in df_arquivo.iterrows():
-        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['varasArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio), {}).get('VarasSite', 0)
-        dif = qtd_arquivo - qtd_site
-        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
-        rows.append({
-            'estado': estado,
-            'municipio': municipio,
-            'tipo': 'vara',
-            'quantidadeArquivo': qtd_arquivo,
-            'quantidadeSite': qtd_site,
-            'diferenca': dif,
-            'status': status
-        })
-    df_validacao = pd.DataFrame(rows)
-    aba = 'validacao_vara'
-elif tipo_ambos:
-    # Gerar linhas separadas para cartório e vara
-    df_cartorio = df[df['tipo'] == 'cartorio'].groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
-    df_vara = df[df['tipo'] == 'vara'].groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
-    rows = []
-    # Cartórios
-    for _, row in df_cartorio.iterrows():
-        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartoriosArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosSite', 0)
-        dif = qtd_arquivo - qtd_site
-        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
-        rows.append({
-            'estado': estado,
-            'municipio': municipio,
-            'tipo': 'cartorio',
-            'quantidadeArquivo': qtd_arquivo,
-            'quantidadeSite': qtd_site,
-            'diferenca': dif,
-            'status': status
-        })
-    # Varas
-    for _, row in df_vara.iterrows():
-        estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['varasArquivo']
-        qtd_site = contagem_site_total.get((estado, municipio), {}).get('VarasSite', 0)
-        dif = qtd_arquivo - qtd_site
-        status = 'Ok' if qtd_arquivo == qtd_site else 'Divergente'
-        rows.append({
-            'estado': estado,
-            'municipio': municipio,
-            'tipo': 'vara',
-            'quantidadeArquivo': qtd_arquivo,
-            'quantidadeSite': qtd_site,
-            'diferenca': dif,
-            'status': status
-        })
-    df_validacao = pd.DataFrame(rows)
-    aba = 'validacao_cartorio_evara'
-else:
-    print("[DEBUG] Tipo de arquivo não reconhecido para validação.")
-    exit()
+    # Agregar todos os dados do site
+    dados_site_total = []
+    for idx_estado, estado in enumerate(estados_comparar, 1):
+        print(f"\nValidando {estado} [{str(idx_estado).zfill(2)}/{str(len(estados_comparar)).zfill(2)}] no site...")
+        url_estado = f"https://cartorios.info/cartorios-{estado.lower()}.html"
+        response = requests.get(url_estado)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        cidades_div = soup.find('div', id='cidades')
+        cidades = cidades_div.find_all('div', class_='cidades') if cidades_div else []
+        total_municipios = len(cidades)
+        resultado_estado = []
 
-dir_validacao = os.path.join('data', 'validacao')
-os.makedirs(dir_validacao, exist_ok=True)
-nome_base = os.path.splitext(os.path.basename(arquivo))[0]
-datahora = datetime.now().strftime('%Y%m%d_%H%M')
-nome_relatorio = f"{datahora}_validacao_{nome_base}.xlsx"
-caminho_relatorio = os.path.join(dir_validacao, nome_relatorio)
-df_validacao.columns = [normalizar_nome_campo(c) for c in df_validacao.columns]
-df_validacao.to_excel(caminho_relatorio, index=False, sheet_name=aba)
-print(f"\nRelatório de validação salvo em: {caminho_relatorio} (aba: {aba})")
+        def processa_municipio(cidade, estado):
+            import time
+            a_tag = cidade.find('a', href=True)
+            if not a_tag:
+                return []
+            link = a_tag['href']
+            url_municipio = f"https://cartorios.info/{link}"
+            resp = requests.get(url_municipio)
+            soup_mun = BeautifulSoup(resp.content, 'html.parser')
+            time.sleep(0.2)  # Pequeno delay para evitar sobrecarga no site
+            # Extração padronizada do nome do município (breadcrumb, h1, url)
+            municipio = None
+            breadcrumb = soup_mun.select_one('ul.breadcrumbs li:last-child span[itemprop="name"]')
+            if breadcrumb and breadcrumb.text.strip():
+                municipio = breadcrumb.text.strip()
+            else:
+                h1_tag = soup_mun.find('h1')
+                if h1_tag and 'de ' in h1_tag.text:
+                    import re
+                    m = re.search(r'de (.+?)( na | em | do | da | no |/|$)', h1_tag.text, re.IGNORECASE)
+                    if m:
+                        municipio = m.group(1).strip()
+            if not municipio:
+                path = link.split("cartorios-de-")[-1].split(f"-{estado.lower()}")[0]
+                municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
+            municipio_norm = normalize_nome(municipio)
+            registros = []
+            div_cartorios = soup_mun.find('div', id='cartorios')
+            if div_cartorios:
+                blocos = div_cartorios.find_all('div', class_='row')
+                for bloco in blocos:
+                    nome_tag = bloco.find('h3')
+                    nome = nome_tag.text.strip() if nome_tag else ''
+                    cns = 'Não informado'
+                    cns_tag = bloco.find('strong', string=lambda s: s and "CNS" in s)
+                    if cns_tag:
+                        cns_val = cns_tag.next_sibling
+                        if cns_val:
+                            cns = cns_val.strip()
+                    # Busca escrivão titular (removendo 'desde ...')
+                    escrivao = 'Não informado'
+                    escrivao_tag = bloco.find('strong', string=lambda s: s and ("Escrivão Titular" in s or "Escrivao Titular" in s or "Escrivão" in s or "Escrivao" in s))
+                    if escrivao_tag:
+                        escrivao_val = escrivao_tag.next_sibling
+                        if escrivao_val:
+                            escrivao = escrivao_val.strip().split('desde')[0].strip()
+                    tipo = 'Cartório'
+                    registros.append({
+                        'estado': estado,
+                        'municipio': municipio,
+                        'municipio_norm': municipio_norm,
+                        'tipo': tipo,
+                        'cartorio': nome,
+                        'cns': cns,
+                        'cns_norm': normalize_cns(cns),
+                        'escrivaotitular': escrivao
+                    })
+            div_varas = soup_mun.find('div', id='varas')
+            if div_varas:
+                blocos = div_varas.find_all('div', class_='row')
+                for bloco in blocos:
+                    nome_tag = bloco.find('h3')
+                    nome = nome_tag.text.strip() if nome_tag else ''
+                    cns = 'Não informado'
+                    cns_tag = bloco.find('strong', string=lambda s: s and "CNS" in s)
+                    if cns_tag:
+                        cns_val = cns_tag.next_sibling
+                        if cns_val:
+                            cns = cns_val.strip()
+                    # Busca escrivão titular (removendo 'desde ...')
+                    escrivao = 'Não informado'
+                    escrivao_tag = bloco.find('strong', string=lambda s: s and ("Escrivão Titular" in s or "Escrivao Titular" in s or "Escrivão" in s or "Escrivao" in s))
+                    if escrivao_tag:
+                        escrivao_val = escrivao_tag.next_sibling
+                        if escrivao_val:
+                            escrivao = escrivao_val.strip().split('desde')[0].strip()
+                    tipo = 'Vara'
+                    registros.append({
+                        'estado': estado,
+                        'municipio': municipio,
+                        'municipio_norm': municipio_norm,
+                        'tipo': tipo,
+                        'cartorio': nome,
+                        'cns': cns,
+                        'cns_norm': normalize_cns(cns),
+                        'escrivaotitular': escrivao
+                    })
+            return registros
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futuros = {executor.submit(processa_municipio, cidade, estado): idx_mun for idx_mun, cidade in enumerate(cidades, 1)}
+            for idx_mun, future in enumerate(concurrent.futures.as_completed(futuros), 1):
+                registros = future.result()
+                resultado_estado.extend(registros)
+                print(f"- Municípios processados: {idx_mun}/{total_municipios}", end='\r')
+        dados_site_total.extend(resultado_estado)
+        print(f"- Municípios processados: {total_municipios}/{total_municipios} ✅")
+
+    # Aqui você pode implementar apenas a exibição de divergências na tela, se desejar.
+    # Exemplo: mostrar quantidade de registros divergentes
+    df_arquivo = df.copy()
+    df_site = pd.DataFrame(dados_site_total)
+    # Garante que todas as colunas de comparação existam no site
+    for col in ['municipio', 'cartorio', 'tipo', 'cns', 'escrivaotitular']:
+        if col not in df_site.columns:
+            df_site[col] = 'Não informado'
+    # Normaliza campos de comparação no site
+    df_site['estado'] = df_site['estado'].str.upper()
+    df_site['municipio_norm'] = df_site['municipio'].apply(lambda x: normalize_nome(x))
+    df_site['cartorio_norm'] = df_site['cartorio'].apply(lambda x: normalize_nome(x))
+    df_site['tipo_norm'] = df_site['tipo'].apply(lambda x: normalize_nome(x))
+    df_site['cns_norm'] = df_site['cns'].apply(lambda x: normalize_cns(x))
+    df_site['escrivaotitular_norm'] = df_site['escrivaotitular'].apply(lambda x: normalize_nome(x))
+    # Chaves de comparação normalizadas (apenas para identificar o cartório)
+    chaves = ['estado', 'municipio_norm', 'cartorio_norm', 'tipo_norm']
+    df_arquivo['origem'] = 'arquivo'
+    df_site['origem'] = 'site'
+    df_merge = pd.merge(
+        df_arquivo,
+        df_site,
+        on=chaves,
+        how='outer',
+        suffixes=('_arquivo', '_site'),
+        indicator=True
+    )
+    # Gera DataFrame de validação simplificado
+    campos_validar = [
+        ('municipio', 'municipio_arquivo', 'municipio_site', 'municipio_norm_arquivo', 'municipio_norm_site'),
+        ('cartorio', 'cartorio_arquivo', 'cartorio_site', 'cartorio_norm_arquivo', 'cartorio_norm_site'),
+        ('escrivaotitular', 'escrivaotitular_arquivo', 'escrivaotitular_site', 'escrivaotitular_norm_arquivo', 'escrivaotitular_norm_site'),
+        ('tipo', 'tipo_arquivo', 'tipo_site', 'tipo_norm_arquivo', 'tipo_norm_site'),
+        ('cns', 'cns_arquivo', 'cns_site', 'cns_norm_arquivo', 'cns_norm_site')
+    ]
+    linhas = []
+    for _, row in df_merge.iterrows():
+        linha = {'estado': row.get('estado', '')}
+        status = 'Ok'
+        for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
+            val_arq = row.get(campo_arq, '')
+            val_site = row.get(campo_site, '')
+            val_norm_arq = row.get(campo_norm_arq, '')
+            val_norm_site = row.get(campo_norm_site, '')
+            if pd.isna(val_arq): val_arq = ''
+            if pd.isna(val_site): val_site = ''
+            if pd.isna(val_norm_arq): val_norm_arq = ''
+            if pd.isna(val_norm_site): val_norm_site = ''
+            linha[f'{campo}_arquivo'] = val_arq
+            linha[f'{campo}_site'] = val_site
+            # Só compara campos se ambos existem (merge == both)
+            if row['_merge'] == 'both' and val_norm_arq != val_norm_site:
+                status = 'Divergente'
+        # Se só existe de um lado, é divergente
+        if row['_merge'] != 'both':
+            status = 'Divergente'
+        linha['status'] = status
+        linhas.append(linha)
+    df_validacao = pd.DataFrame(linhas)
+    print(f"Total de registros validados: {len(df_validacao)}")
+    print(df_validacao.head(20))
+
+    # Salva validação simplificada
+    pasta_saida = os.path.join('data', 'validacao')
+    os.makedirs(pasta_saida, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    nome_arquivo_original = os.path.splitext(os.path.basename(arquivo))[0]
+    nome_arquivo_saida = f"{timestamp}_validacao_{nome_arquivo_original}.xlsx"
+    caminho_saida = os.path.join(pasta_saida, nome_arquivo_saida)
+    df_validacao.to_excel(caminho_saida, index=False)
+    print(f"Arquivo de validação salvo em: {caminho_saida}")
+
