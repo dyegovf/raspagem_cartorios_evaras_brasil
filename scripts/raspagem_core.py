@@ -1,10 +1,28 @@
 import requests
+import time
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+import unicodedata
+
+# Função de normalização igual à da validação
+def normalize_nome(nome, estado=None):
+    if not isinstance(nome, str):
+        return ''
+    nome = nome.lower()
+    if estado:
+        sufixo = f'em {estado.lower()}'
+        if nome.endswith(sufixo):
+            nome = nome[: -len(sufixo)].strip()
+    nome = unicodedata.normalize('NFKD', nome)
+    nome = ''.join([c for c in nome if not unicodedata.combining(c)])
+    nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
+    return ' '.join(nome.split())
 
 def extrair_links_municipios(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
-    response = requests.get(url_estado)
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
+    response = requests.get(url_estado, headers=headers)
+    time.sleep(0.2)
     soup = BeautifulSoup(response.content, 'html.parser')
     links = []
     for a in soup.find_all('a', href=True):
@@ -20,7 +38,9 @@ def extrair_nome_municipio(url_municipio, sigla_estado):
     return nome_formatado
 
 def extrair_dados_municipio(url_municipio, sigla_estado):
-    response = requests.get(url_municipio)
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
+    response = requests.get(url_municipio, headers=headers)
+    time.sleep(1)
     soup = BeautifulSoup(response.content, 'html.parser')
     municipio = extrair_nome_municipio(url_municipio, sigla_estado)
     dados = []
@@ -28,8 +48,37 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
     # Extrair cartórios
     container_cartorios = soup.find('div', id='cartorios')
     if container_cartorios:
-        blocos = container_cartorios.find_all('div', class_='row')
-        for bloco in blocos:
+        # Lógica híbrida: prioriza o id do container, mas faz fallback para breadcrumb ou <title> se o nome extraído for só uma palavra
+        municipio_hibrido = None
+        container_municipio = soup.find('div', class_='cidades')
+        if container_municipio and container_municipio.has_attr('id'):
+            municipio_id = container_municipio['id']
+            partes = [parte for parte in municipio_id.split('-') if parte]
+            municipio_nome = ' '.join([parte.capitalize() for parte in partes])
+            # Se o nome extraído for só uma palavra, faz o fallback
+            if len(partes) == 1:
+                municipio_hibrido = None
+            else:
+                municipio_hibrido = municipio_nome
+        if not municipio_hibrido:
+            breadcrumb = soup.select_one('ul.breadcrumbs li:last-child span[itemprop="name"]')
+            if breadcrumb:
+                municipio_hibrido = breadcrumb.text.strip()
+            else:
+                titulo_tag = soup.find('title')
+                if titulo_tag:
+                    import re
+                    m = re.search(r'de (.+?)/' + sigla_estado, titulo_tag.text)
+                    if m:
+                        municipio_hibrido = m.group(1).strip()
+                    else:
+                        municipio_hibrido = titulo_tag.text.strip()
+                else:
+                    municipio_hibrido = 'Não identificado'
+        # Use o nome formatado com espaços, igual ao site
+        municipio = municipio_hibrido if municipio_hibrido else municipio
+    blocos = container_cartorios.find_all('div', class_='row')
+    for bloco in blocos:
             nome_tag = bloco.find('h3')
             if not nome_tag:
                 continue

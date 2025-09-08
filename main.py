@@ -72,7 +72,7 @@ def normalizar_nome_campo(nome):
 # Função para gerar nome de arquivo com data e hora
 def nome_arquivo_datahora(nome_base, extensao):
     agora = datetime.now()
-    data_hora = agora.strftime("%Y%m%d_%H%M%S")
+    data_hora = agora.strftime("%Y%m%d_%H%M")
     return f"{data_hora}_{nome_base}.{extensao}"
 
 data_geracao = datetime.now().strftime("%Y%m%d")
@@ -151,8 +151,9 @@ for idx_estado, estado in enumerate(estados_selecionados, 1):
             resultados = executor.map(processar_municipio, args_list)
             for i, dados_filtrados in enumerate(resultados, 1):
                 dados_estado.extend(dados_filtrados)
-                print(f"Municipios raspados: {i}/{total}", end='\r')
-        print(f"Municipios raspados: {total}/{total}")
+                if i == total or i % 10 == 0:
+                    print(f"Municipios raspados: {i}/{total}   ", end='\r')
+            print(f"Municipios raspados: {total}/{total}   ")
         print(f"✅ Estado {estado} concluído: {total}/{total}")
 
         if formato_escolhido == "csv_unico":

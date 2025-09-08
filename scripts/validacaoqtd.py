@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import unicodedata
+from datetime import datetime
 
 
 # Lista de estados brasileiros
@@ -278,8 +279,6 @@ else:
     exit()
 
 # Salvar relatório na pasta data/validacao com nome baseado no arquivo original
-import os
-from datetime import datetime
 dir_validacao = os.path.join('data', 'validacao')
 os.makedirs(dir_validacao, exist_ok=True)
 nome_base = os.path.splitext(os.path.basename(arquivo))[0]
