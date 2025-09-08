@@ -203,10 +203,6 @@ if tipo_cartorio:
     print("[DEBUG] Tipo detectado: apenas cartorio")
     df_arquivo = contagem_arquivo(df, 'cartorio')
     rows = []
-    # print("\nDEBUG: Chaves do arquivo:")
-    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
-    # print("\nDEBUG: Chaves do site:")
-    # print([k for k in contagem_site_total.keys()])
     for _, row in df_arquivo.iterrows():
         estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['cartoriosArquivo']
         qtd_site = contagem_site_total.get((estado, municipio), {}).get('CartoriosSite', 0)
@@ -215,10 +211,11 @@ if tipo_cartorio:
         rows.append({
             'estado': estado,
             'municipio': municipio,
-            'cartoriosArquivo': qtd_arquivo,
-            'cartoriosSite': qtd_site,
-            'difCartorios': dif,
-            'statusCartorio': status
+            'tipo': 'cartorio',
+            'quantidadeArquivo': qtd_arquivo,
+            'quantidadeSite': qtd_site,
+            'diferenca': dif,
+            'status': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio'
@@ -226,10 +223,6 @@ elif tipo_vara:
     print("[DEBUG] Tipo detectado: apenas vara")
     df_arquivo = contagem_arquivo(df, 'vara')
     rows = []
-    # print("\nDEBUG: Chaves do arquivo:")
-    # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
-    # print("\nDEBUG: Chaves do site:")
-    # print([k for k in contagem_site_total.keys()])
     for _, row in df_arquivo.iterrows():
         estado, municipio, qtd_arquivo = row['estado'], row['municipio'], row['varasArquivo']
         qtd_site = contagem_site_total.get((estado, municipio), {}).get('VarasSite', 0)
@@ -238,10 +231,11 @@ elif tipo_vara:
         rows.append({
             'estado': estado,
             'municipio': municipio,
-            'varasArquivo': qtd_arquivo,
-            'varasSite': qtd_site,
-            'difVaras': dif,
-            'statusVara': status
+            'tipo': 'vara',
+            'quantidadeArquivo': qtd_arquivo,
+            'quantidadeSite': qtd_site,
+            'diferenca': dif,
+            'status': status
         })
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_vara'
