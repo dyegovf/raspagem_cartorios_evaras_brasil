@@ -49,6 +49,7 @@ def normalizar_campo(valor, manter_ponto_virgula=False):
     if not isinstance(valor, str):
         return valor
     valor = valor.lower()
+    valor = valor.replace('-', ' ')
     if manter_ponto_virgula:
         valor = unicodedata.normalize('NFKD', valor)
         valor = ''.join([c for c in valor if not unicodedata.combining(c)])

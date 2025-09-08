@@ -7,7 +7,6 @@ from collections import defaultdict
 import unicodedata
 from datetime import datetime
 
-
 # Lista de estados brasileiros
 estados = [
     'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
@@ -17,11 +16,9 @@ estados = [
 
 print("Informe o caminho do arquivo CSV/XLSX gerado para comparar:")
 arquivo = input("Arquivo: ").strip()
-
 if not arquivo:
     print("Arquivo não informado. Saindo.")
     exit()
-
 
 # Leitura do arquivo
 if arquivo.endswith('.csv'):
@@ -32,6 +29,10 @@ else:
     print("Arquivo deve ser .csv ou .xlsx")
     exit()
 
+# Debug após leitura do arquivo
+print("\n[DEBUG] Colunas do arquivo lido:", list(df.columns))
+print("[DEBUG] Primeiros registros do arquivo:")
+print(df.head())
 
 # Detecta automaticamente os estados presentes no arquivo
 estados_comparar = sorted(df['estado'].dropna().unique())
@@ -88,11 +89,11 @@ tipo_ambos = len(tipos_arquivo) > 1
 # Contagem do arquivo por Estado e Município
 def contagem_arquivo(df, tipo):
     df = df.copy()
-    if tipo == 'Cartório':
-        filtro = df[df['tipo'] == 'Cartório']
+    if tipo == 'cartorio':
+        filtro = df[df['tipo'] == 'cartorio']
         return filtro.groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
-    elif tipo == 'Vara':
-        filtro = df[df['tipo'] == 'Vara']
+    elif tipo == 'vara':
+        filtro = df[df['tipo'] == 'vara']
         return filtro.groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
     else:
         return df.groupby(['estado', 'municipio']).size().reset_index(name='cartorioEVaraArquivo')
@@ -192,9 +193,15 @@ for idx_estado, estado in enumerate(estados_comparar, 1):
     contagem_site_total.update(resultado_estado)
     print(f"- Municípios processados: {total_municipios}/{total_municipios}")
 
+# Debug: comparar municípios do arquivo e do site
+if 'ba' in estados_comparar:
+    print("\n[DEBUG] Municípios do arquivo:", sorted(df[df['estado']=='ba']['municipio'].unique()))
+    print("[DEBUG] Municípios do site:", sorted([k[1] for k in contagem_site_total.keys() if k[0] == 'ba']))
+
 # Gerar DataFrame de validação
 if tipo_cartorio:
-    df_arquivo = contagem_arquivo(df, 'Cartório')
+    print("[DEBUG] Tipo detectado: apenas cartorio")
+    df_arquivo = contagem_arquivo(df, 'cartorio')
     rows = []
     # print("\nDEBUG: Chaves do arquivo:")
     # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
@@ -216,7 +223,8 @@ if tipo_cartorio:
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio'
 elif tipo_vara:
-    df_arquivo = contagem_arquivo(df, 'Vara')
+    print("[DEBUG] Tipo detectado: apenas vara")
+    df_arquivo = contagem_arquivo(df, 'vara')
     rows = []
     # print("\nDEBUG: Chaves do arquivo:")
     # print(df_arquivo[['Estado', 'MunicipioNorm']].drop_duplicates().to_string(index=False))
@@ -238,6 +246,7 @@ elif tipo_vara:
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_vara'
 elif tipo_ambos:
+    print("[DEBUG] Tipo detectado: ambos (cartorio e vara)")
     # Gerar linhas separadas para cartório e vara
     df_cartorio = df[df['tipo'] == 'cartorio'].groupby(['estado', 'municipio']).size().reset_index(name='cartoriosArquivo')
     df_vara = df[df['tipo'] == 'vara'].groupby(['estado', 'municipio']).size().reset_index(name='varasArquivo')
@@ -275,10 +284,9 @@ elif tipo_ambos:
     df_validacao = pd.DataFrame(rows)
     aba = 'validacao_cartorio_evara'
 else:
-    print("Tipo de arquivo não reconhecido para validação.")
+    print("[DEBUG] Tipo de arquivo não reconhecido para validação.")
     exit()
 
-# Salvar relatório na pasta data/validacao com nome baseado no arquivo original
 dir_validacao = os.path.join('data', 'validacao')
 os.makedirs(dir_validacao, exist_ok=True)
 nome_base = os.path.splitext(os.path.basename(arquivo))[0]
