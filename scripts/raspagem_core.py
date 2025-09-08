@@ -9,14 +9,16 @@ def normalize_nome(nome, estado=None):
     if not isinstance(nome, str):
         return ''
     nome = nome.lower()
+    # Só remove o sufixo se for exatamente ' em {estado}' (com espaço antes)
     if estado:
-        sufixo = f'em {estado.lower()}'
+        sufixo = f' em {estado.lower()}'
         if nome.endswith(sufixo):
             nome = nome[: -len(sufixo)].strip()
     nome = unicodedata.normalize('NFKD', nome)
     nome = ''.join([c for c in nome if not unicodedata.combining(c)])
     nome = ''.join([c for c in nome if c.isalnum() or c.isspace()])
-    return ' '.join(nome.split())
+    nome = ' '.join(nome.split())
+    return nome
 
 def extrair_links_municipios(sigla_estado):
     url_estado = f"https://cartorios.info/cartorios-{sigla_estado.lower()}.html"
@@ -50,14 +52,14 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
     else:
         h1_tag = soup.find('h1')
         if h1_tag and 'de ' in h1_tag.text:
-            # Exemplo: 'Cartórios e Varas Judiciais de Xique-Xique na Bahia'
             import re
             m = re.search(r'de (.+?)( na | em | do | da | no |/|$)', h1_tag.text, re.IGNORECASE)
             if m:
                 municipio = m.group(1).strip()
         if not municipio:
-            # Fallback para URL
             municipio = extrair_nome_municipio(url_municipio, sigla_estado)
+    municipio = normalize_nome(municipio, sigla_estado)
+
     dados = []
     container_cartorios = soup.find('div', id='cartorios')
     if container_cartorios:
@@ -109,7 +111,7 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
 
             dados.append({
                 'Estado': sigla_estado,
-                'Município': municipio,
+                'Município': municipio,  # já normalizado
                 'Cartório': nome,
                 'Serviços': servicos,
                 'Status do Cartório': status,
@@ -170,7 +172,7 @@ def extrair_dados_municipio(url_municipio, sigla_estado):
 
             dados.append({
                 'Estado': sigla_estado,
-                'Município': municipio,
+                'Município': municipio,  # já normalizado
                 'Cartório': nome,
                 'Serviços': servicos,
                 'Status do Cartório': status,

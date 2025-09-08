@@ -29,7 +29,9 @@ else:
     print("Arquivo deve ser .csv ou .xlsx")
     exit()
 
-# Debug após leitura do arquivo
+
+# Padroniza a coluna 'estado' para maiúsculo para garantir correspondência correta
+df['estado'] = df['estado'].str.upper()
 
 # Detecta automaticamente os estados presentes no arquivo
 estados_comparar = sorted(df['estado'].dropna().unique())
