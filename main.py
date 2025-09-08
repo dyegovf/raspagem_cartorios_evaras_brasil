@@ -147,15 +147,19 @@ for idx_estado, estado in enumerate(estados_selecionados, 1):
         links_municipios = extrair_links_municipios(estado)
         dados_estado = []
         total = len(links_municipios)
+        max_msg_len = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             args_list = [(url, estado, tipo_escolhido) for url in links_municipios]
             resultados = executor.map(processar_municipio, args_list)
             for i, dados_filtrados in enumerate(resultados, 1):
                 dados_estado.extend(dados_filtrados)
                 if i == total or i % 10 == 0:
-                    print(f"Municipios raspados: {i}/{total}   ", end='\r')
-            print(f"Municipios raspados: {total}/{total}   ")
-        print(f"✅ Estado {estado} concluído: {total}/{total}")
+                    msg = f"Municipios raspados: {i}/{total}"
+                    max_msg_len = max(max_msg_len, len(msg))
+                    print(f"{msg}{' ' * (max_msg_len - len(msg))}", end='\r')
+            # Imprime a linha final de progresso com o check de conclusão
+            msg = f"Municipios raspados: {total}/{total} ✅"
+            print(f"{msg}{' ' * (max_msg_len - len(msg))}")
 
         if formato_escolhido == "csv_unico":
             todos_dados.extend(dados_estado)
@@ -218,6 +222,8 @@ for registro in todos_dados:
 
 if formato_escolhido == "csv_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
+    # Remove duplicatas apenas se todos os campos principais forem iguais, incluindo CNS
+    df = df.drop_duplicates(subset=['Estado', 'Município', 'Cartório', 'CNS'])
     df.columns = campos_esperados_camel
     if tipo_escolhido == "Cartório":
         nome_base = "cartorios_brasil"
@@ -228,10 +234,12 @@ if formato_escolhido == "csv_unico":
     nome_arquivo = nome_arquivo_datahora(nome_base, "csv")
     caminho_csv_unico = os.path.join(pasta_destino, nome_arquivo)
     df.to_csv(caminho_csv_unico, index=False, encoding='utf-8-sig')
-    print(f"\n📁 CSV único gerado: {caminho_csv_unico} ({len(todos_dados)} registros)")
+    print(f"\n📁 CSV único gerado: {caminho_csv_unico} ({len(df)} registros)")
 
 elif formato_escolhido == "xls_unico":
     df = pd.DataFrame(todos_dados)[campos_esperados]
+    # Remove duplicatas apenas se todos os campos principais forem iguais, incluindo CNS
+    df = df.drop_duplicates(subset=['Estado', 'Município', 'Cartório', 'CNS'])
     df.columns = campos_esperados_camel
     if tipo_escolhido == "Cartório":
         nome_base = "cartorios_brasil"
@@ -242,7 +250,7 @@ elif formato_escolhido == "xls_unico":
     nome_arquivo = nome_arquivo_datahora(nome_base, "xlsx")
     caminho_xls_unico = os.path.join(pasta_destino, nome_arquivo)
     df.to_excel(caminho_xls_unico, index=False)
-    print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(todos_dados)} registros)")
+    print(f"\n📁 XLSX único gerado: {caminho_xls_unico} ({len(df)} registros)")
 
 hora_fim = datetime.now().strftime("%H:%M")
 print(f"\n📅 Data de extração: {data_geracao_formatada}")
