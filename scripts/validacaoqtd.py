@@ -1,12 +1,3 @@
-# Mapeamento de siglas para nomes de estados por extenso (minúsculo)
-SIGLA_ESTADO_NOME = {
-    'AC': 'acre', 'AL': 'alagoas', 'AP': 'amapa', 'AM': 'amazonas', 'BA': 'bahia', 'CE': 'ceara',
-    'DF': 'distrito federal', 'ES': 'espirito santo', 'GO': 'goias', 'MA': 'maranhao', 'MT': 'mato grosso',
-    'MS': 'mato grosso do sul', 'MG': 'minas gerais', 'PA': 'para', 'PB': 'paraiba', 'PR': 'parana',
-    'PE': 'pernambuco', 'PI': 'piaui', 'RJ': 'rio de janeiro', 'RN': 'rio grande do norte',
-    'RS': 'rio grande do sul', 'RO': 'rondonia', 'RR': 'roraima', 'SC': 'santa catarina',
-    'SP': 'sao paulo', 'SE': 'sergipe', 'TO': 'tocantins'
-}
 import sys
 import os
 import pandas as pd
