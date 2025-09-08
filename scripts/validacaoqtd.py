@@ -1,3 +1,12 @@
+# Mapeamento de siglas para nomes de estados por extenso (minúsculo)
+SIGLA_ESTADO_NOME = {
+    'AC': 'acre', 'AL': 'alagoas', 'AP': 'amapa', 'AM': 'amazonas', 'BA': 'bahia', 'CE': 'ceara',
+    'DF': 'distrito federal', 'ES': 'espirito santo', 'GO': 'goias', 'MA': 'maranhao', 'MT': 'mato grosso',
+    'MS': 'mato grosso do sul', 'MG': 'minas gerais', 'PA': 'para', 'PB': 'paraiba', 'PR': 'parana',
+    'PE': 'pernambuco', 'PI': 'piaui', 'RJ': 'rio de janeiro', 'RN': 'rio grande do norte',
+    'RS': 'rio grande do sul', 'RO': 'rondonia', 'RR': 'roraima', 'SC': 'santa catarina',
+    'SP': 'sao paulo', 'SE': 'sergipe', 'TO': 'tocantins'
+}
 import sys
 import os
 import pandas as pd
@@ -145,15 +154,17 @@ def processar_municipio_site(args):
     a_tag = cidade.find('a', href=True)
     if not a_tag:
         return None
+    # Extrai o nome do município diretamente do texto do link na página do estado
+    municipio = a_tag.text.strip()
+    # Remove prefixos como "Cartórios em " ou "Cartórios de "
+    import re
+    municipio = re.sub(r'^Cartórios (em|de) ', '', municipio, flags=re.IGNORECASE)
+    municipio_norm = normalize_nome(municipio)
     link = a_tag['href']
     url_municipio = f"https://cartorios.info/{link}"
     try:
         resp = requests.get(url_municipio)
         soup_mun = BeautifulSoup(resp.content, 'html.parser')
-        # Nome do município
-        path = link.split("cartorios-de-")[-1].split(f"-{estado.lower()}")[0]
-        municipio = ' '.join([parte.capitalize() for parte in path.split('-')])
-        municipio_norm = normalize_nome(municipio)
         # Cartórios
         div_cartorios = soup_mun.find('div', id='cartorios')
         cartorios_count = len(div_cartorios.find_all('div', class_='row', id=True)) if div_cartorios else 0
