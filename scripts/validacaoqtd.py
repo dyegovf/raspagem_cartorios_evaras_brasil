@@ -326,16 +326,19 @@ if __name__ == "__main__":
     def get_val_from_registro(registro, campo, df_ref=None, lado='arquivo'):
         # Busca o valor do campo exatamente como está no DataFrame de referência
         if registro is None or df_ref is None:
-            return ''
+            return 'Não informado'
         if isinstance(registro, pd.DataFrame):
             registro = registro.iloc[0]
         # Busca o nome da coluna que termina com _arquivo ou _site
         possiveis = [campo, f'{campo}_{lado}', f'{campo}{lado.capitalize()}', f'{campo}_{lado.capitalize()}']
         for col in df_ref.columns:
             if col in possiveis or col.lower() == campo.lower() or col.replace('_','').lower() == campo.replace('_','').lower():
-                return registro[col] if col in registro else ''
-        # fallback: retorna vazio
-        return ''
+                val = registro[col] if col in registro else ''
+                if pd.isna(val) or val == '':
+                    return 'Não informado'
+                return val
+        # fallback: retorna 'Não informado'
+        return 'Não informado'
 
     for _, row in df_merge.iterrows():
         linha = {'estado': row.get('estado', '')}
@@ -348,25 +351,30 @@ if __name__ == "__main__":
                 val_site = row.get(campo_site, '')
                 val_norm_arq = row.get(campo_norm_arq, '')
                 val_norm_site = row.get(campo_norm_site, '')
-                if pd.isna(val_arq): val_arq = ''
-                if pd.isna(val_site): val_site = ''
+                if pd.isna(val_arq) or val_arq == '':
+                    val_arq = 'Não informado'
+                if pd.isna(val_site) or val_site == '':
+                    val_site = 'Não informado'
                 if pd.isna(val_norm_arq): val_norm_arq = ''
                 if pd.isna(val_norm_site): val_norm_site = ''
                 linha[f'{campo}_arquivo'] = val_arq
                 linha[f'{campo}_site'] = val_site
-                if val_norm_arq != val_norm_site:
+                # Só marca como divergente se os valores normalizados forem diferentes E não forem ambos 'Não informado'
+                if (val_norm_arq != val_norm_site) and not (
+                    (val_arq.strip().lower() == 'não informado' and val_site.strip().lower() == 'não informado')
+                ):
                     status = 'Divergente'
         elif row['_merge'] == 'left_only':
             registro_arq = df_arquivo_idx.loc[chave_tuple] if chave_tuple in df_arquivo_idx.index else None
             for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
                 val_arq = get_val_from_registro(registro_arq, campo, df_arquivo, 'arquivo')
                 linha[f'{campo}_arquivo'] = val_arq
-                linha[f'{campo}_site'] = ''
+                linha[f'{campo}_site'] = 'Não informado'
             status = 'Divergente'
         elif row['_merge'] == 'right_only':
             registro_site = df_site_idx.loc[chave_tuple] if chave_tuple in df_site_idx.index else None
             for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
-                linha[f'{campo}_arquivo'] = ''
+                linha[f'{campo}_arquivo'] = 'Não informado'
                 val_site = get_val_from_registro(registro_site, campo, df_site, 'site')
                 linha[f'{campo}_site'] = val_site
             status = 'Divergente'
