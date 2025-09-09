@@ -2,30 +2,15 @@
 
 Este projeto realiza a raspagem automatizada de dados públicos do site [cartorios.info](https://cartorios.info), extraindo informações detalhadas sobre todos os **cartórios extrajudiciais** e **varas judiciais** dos municípios brasileiros.
 
-Você pode escolher:
+### Principais recursos
 
-- 📌 O tipo de unidade: Cartório, Vara ou Ambos
-- 📁 O formato de saída: CSV único, XLSX único, ou arquivos separados por estado
-- 🌎 O estado a ser processado: um específico ou todos os estados do Brasil
-
-Os arquivos gerados são organizados automaticamente em subpastas dentro de `data/`, conforme suas escolhas.
-
----
-
-### 📌 Funcionalidades
-
-- ✅ Extração de dados de todos os estados e municípios do Brasil
-- ✅ Captura separada de cartórios e varas judiciais
-- ✅ Identificação do tipo de unidade (Cartório ou Vara)
-- ✅ Filtro por tipo de unidade e estado
-- ✅ Geração de arquivos em quatro formatos:
-  - Um único `.csv` consolidado
-  - Um único `.xlsx` consolidado
-  - Um `.csv` por estado
-  - Um `.xlsx` por estado
-- ✅ Organização automática dos arquivos em subpastas específicas
-- ✅ Correção robusta na extração do nome do município (via URL)
-- ✅ Configuração segura da pasta de destino via `.env`
+- 📌 Escolha do tipo de unidade: Cartório, Vara ou Ambos
+- 📁 Escolha do formato de saída: CSV único, XLSX único, ou arquivos separados por estado
+- 🌎 Escolha do(s) estado(s) a ser(em) processado(s): um específico ou todos os estados do Brasil
+- 🗂️ Organização automática dos arquivos em subpastas dentro de `data/`, conforme suas escolhas
+- 🏷️ Extração robusta do nome do município (breadcrumb, h1 ou URL)
+- 🛡️ Preenchimento automático de campos ausentes com "Não informado"
+- 🧪 Script de validação para comparar arquivos gerados com dados do site
 
 ---
 
@@ -41,6 +26,9 @@ Cada linha contém:
 | Serviços           | Lista de serviços prestados (separados por ponto e vírgula) |
 | Status do Cartório | Ativo ou Inativo                                            |
 | Tipo               | Cartório ou Vara                                            |
+| Escrivão Titular   | Nome do escrivão titular ou "Não informado"                 |
+| Data de Criação    | Data de criação da serventia ou "Não informado"             |
+| CNS                | Código Nacional de Serventia ou "Não informado"             |
 
 ---
 
@@ -52,6 +40,7 @@ Cada linha contém:
   - `beautifulsoup4`
   - `pandas`
   - `python-dotenv`
+  - `openpyxl` (para exportação XLSX)
 
 Instale com:
 
@@ -89,7 +78,7 @@ Você será guiado por três etapas:
 
 1. Escolher o tipo de unidade: Cartório, Vara ou Ambos
 2. Escolher o formato de saída: CSV único, XLSX único, ou por estado
-3. Escolher o estado (somente se o formato permitir)
+3. Escolher o(s) estado(s) (somente se o formato permitir)
 
 > Se você escolher um formato único, o script processará automaticamente todos os estados.
 
@@ -97,11 +86,12 @@ Você será guiado por três etapas:
 
 ### 🧠 Observações
 
-- O script respeita o tempo de resposta do servidor com `time.sleep(1)` entre requisições
+- O script respeita o tempo de resposta do servidor com `time.sleep(0.2)` ou `time.sleep(0.3)` entre requisições
 - Os dados são públicos e extraídos apenas para fins informativos e acadêmicos
-- O campo "Serviços" pode vir como "Não informado" em varas judiciais ou cartórios sem atribuições listadas
+- Todos os campos podem vir como "Não informado" caso não estejam disponíveis no site
 - O campo "Tipo" permite distinguir entre cartórios extrajudiciais e varas judiciais
-- O nome do município é extraído diretamente da URL, garantindo precisão mesmo em casos complexos como "Rio de Janeiro"
+- O nome do município é extraído de forma robusta (breadcrumb, h1 ou URL)
+- O script de validação compara os arquivos gerados com os dados do site e destaca divergências
 
 ---
 
