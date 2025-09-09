@@ -2,6 +2,7 @@ import sys
 import os
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import unicodedata
 from datetime import datetime
@@ -188,9 +189,25 @@ if __name__ == "__main__":
                 return []
             link = a_tag['href']
             url_municipio = f"https://cartorios.info/{link}"
-            resp = requests.get(url_municipio)
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+            # Função de retry para requisições
+            def get_with_retry(url, headers, max_retries=3, delay=3):
+                for attempt in range(max_retries):
+                    try:
+                        resp = requests.get(url, headers=headers, timeout=20)
+                        resp.raise_for_status()
+                        return resp
+                    except RequestException as e:
+                        if attempt < max_retries - 1:
+                            time.sleep(delay)
+                        else:
+                            print(f"\n[ERRO] Falha ao acessar {url}: {e}")
+                            return None
+            resp = get_with_retry(url_municipio, headers)
+            if resp is None:
+                return []
             soup_mun = BeautifulSoup(resp.content, 'html.parser')
-            time.sleep(0.2)  # Pequeno delay para evitar sobrecarga no site
+            time.sleep(1)  # Delay maior para evitar bloqueio
             # Extração padronizada do nome do município (breadcrumb, h1, url)
             municipio = None
             breadcrumb = soup_mun.select_one('ul.breadcrumbs li:last-child span[itemprop="name"]')
@@ -270,7 +287,7 @@ if __name__ == "__main__":
                     })
             return registros
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futuros = {executor.submit(processa_municipio, cidade, estado): idx_mun for idx_mun, cidade in enumerate(cidades, 1)}
             for idx_mun, future in enumerate(concurrent.futures.as_completed(futuros), 1):
                 registros = future.result()
