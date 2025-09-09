@@ -12,8 +12,7 @@ import time
 
 # -------------------- FUNÇÕES --------------------
 def normalize_nome(nome, estado=None):
-    if not isinstance(nome, str):
-        return ''
+    nome = str(nome) if nome is not None else ''
     nome = nome.lower()
     if estado:
         sufixo = f' em {estado.lower()}'
@@ -114,6 +113,7 @@ if __name__ == "__main__":
         print("Arquivo não informado. Saindo.")
         exit()
 
+
     # Leitura do arquivo
     if arquivo.endswith('.csv'):
         df = pd.read_csv(arquivo)
@@ -122,6 +122,21 @@ if __name__ == "__main__":
     else:
         print("Arquivo deve ser .csv ou .xlsx")
         exit()
+
+    # Mapeamento explícito de nomes de colunas para garantir compatibilidade
+    col_rename = {
+        'Estado': 'estado',
+        'Município': 'municipio',
+        'Cartório': 'cartorio',
+        'Serviços': 'servicos',
+        'Status do Cartório': 'statusdocartorio',
+        'Tipo': 'tipo',
+        'Escrivão Titular': 'escrivaotitular',
+        'Data de Criação': 'datadecriacao',
+        'CNS': 'cns'
+    }
+    # Renomeia apenas se a coluna original existir
+    df = df.rename(columns={k: v for k, v in col_rename.items() if k in df.columns})
 
 
 
@@ -144,6 +159,11 @@ if __name__ == "__main__":
     df['tipo_norm'] = df['tipo'].apply(lambda x: normalize_nome(x))
     df['cns_norm'] = df['cns'].apply(lambda x: normalize_cns(x))
     df['escrivaotitular_norm'] = df['escrivaotitular'].apply(lambda x: normalize_nome(x))
+
+    # Filtra apenas o tipo predominante do arquivo (ex: Cartório ou Vara)
+    tipo_predominante = df['tipo_norm'].mode()[0] if not df['tipo_norm'].empty else None
+    if tipo_predominante:
+        df = df[df['tipo_norm'] == tipo_predominante].copy()
 
     # Detecta automaticamente os estados presentes no arquivo
     estados_comparar = sorted(df['estado'].dropna().unique())
@@ -273,8 +293,12 @@ if __name__ == "__main__":
     df_site['tipo_norm'] = df_site['tipo'].apply(lambda x: normalize_nome(x))
     df_site['cns_norm'] = df_site['cns'].apply(lambda x: normalize_cns(x))
     df_site['escrivaotitular_norm'] = df_site['escrivaotitular'].apply(lambda x: normalize_nome(x))
-    # Chaves de comparação normalizadas (apenas para identificar o cartório)
-    chaves = ['estado', 'municipio_norm', 'cartorio_norm', 'tipo_norm']
+
+    # Filtra o site para comparar apenas o mesmo tipo predominante do arquivo
+    if tipo_predominante:
+        df_site = df_site[df_site['tipo_norm'] == tipo_predominante].copy()
+    # Chaves de comparação normalizadas (apenas estado, tipo_norm, cns_norm para comparar lado a lado mesmo com divergência no município)
+    chaves = ['estado', 'tipo_norm', 'cns_norm']
     df_arquivo['origem'] = 'arquivo'
     df_site['origem'] = 'site'
     df_merge = pd.merge(
@@ -294,27 +318,59 @@ if __name__ == "__main__":
         ('cns', 'cns_arquivo', 'cns_site', 'cns_norm_arquivo', 'cns_norm_site')
     ]
     linhas = []
+    # Para busca eficiente dos registros originais
+    df_arquivo_idx = df_arquivo.set_index(chaves, drop=False)
+    df_site_idx = df_site.set_index(chaves, drop=False)
+
+    def get_val_from_registro(registro, campo, df_ref=None, lado='arquivo'):
+        # Busca o valor do campo exatamente como está no DataFrame de referência
+        if registro is None or df_ref is None:
+            return ''
+        if isinstance(registro, pd.DataFrame):
+            registro = registro.iloc[0]
+        # Busca o nome da coluna que termina com _arquivo ou _site
+        possiveis = [campo, f'{campo}_{lado}', f'{campo}{lado.capitalize()}', f'{campo}_{lado.capitalize()}']
+        for col in df_ref.columns:
+            if col in possiveis or col.lower() == campo.lower() or col.replace('_','').lower() == campo.replace('_','').lower():
+                return registro[col] if col in registro else ''
+        # fallback: retorna vazio
+        return ''
+
     for _, row in df_merge.iterrows():
         linha = {'estado': row.get('estado', '')}
         status = 'Ok'
-        for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
-            val_arq = row.get(campo_arq, '')
-            val_site = row.get(campo_site, '')
-            val_norm_arq = row.get(campo_norm_arq, '')
-            val_norm_site = row.get(campo_norm_site, '')
-            if pd.isna(val_arq): val_arq = ''
-            if pd.isna(val_site): val_site = ''
-            if pd.isna(val_norm_arq): val_norm_arq = ''
-            if pd.isna(val_norm_site): val_norm_site = ''
-            linha[f'{campo}_arquivo'] = val_arq
-            linha[f'{campo}_site'] = val_site
-            # Só compara campos se ambos existem (merge == both)
-            if row['_merge'] == 'both' and val_norm_arq != val_norm_site:
-                status = 'Divergente'
-        # Se só existe de um lado, é divergente
-        if row['_merge'] != 'both':
+        origem_info = 'Ambos' if row['_merge'] == 'both' else ('Só no arquivo' if row['_merge'] == 'left_only' else 'Só no site')
+        chave_tuple = tuple(row.get(k, '') for k in chaves)
+        if row['_merge'] == 'both':
+            for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
+                val_arq = row.get(campo_arq, '')
+                val_site = row.get(campo_site, '')
+                val_norm_arq = row.get(campo_norm_arq, '')
+                val_norm_site = row.get(campo_norm_site, '')
+                if pd.isna(val_arq): val_arq = ''
+                if pd.isna(val_site): val_site = ''
+                if pd.isna(val_norm_arq): val_norm_arq = ''
+                if pd.isna(val_norm_site): val_norm_site = ''
+                linha[f'{campo}_arquivo'] = val_arq
+                linha[f'{campo}_site'] = val_site
+                if val_norm_arq != val_norm_site:
+                    status = 'Divergente'
+        elif row['_merge'] == 'left_only':
+            registro_arq = df_arquivo_idx.loc[chave_tuple] if chave_tuple in df_arquivo_idx.index else None
+            for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
+                val_arq = get_val_from_registro(registro_arq, campo, df_arquivo, 'arquivo')
+                linha[f'{campo}_arquivo'] = val_arq
+                linha[f'{campo}_site'] = ''
+            status = 'Divergente'
+        elif row['_merge'] == 'right_only':
+            registro_site = df_site_idx.loc[chave_tuple] if chave_tuple in df_site_idx.index else None
+            for campo, campo_arq, campo_site, campo_norm_arq, campo_norm_site in campos_validar:
+                linha[f'{campo}_arquivo'] = ''
+                val_site = get_val_from_registro(registro_site, campo, df_site, 'site')
+                linha[f'{campo}_site'] = val_site
             status = 'Divergente'
         linha['status'] = status
+        linha['origem_info'] = origem_info
         linhas.append(linha)
     df_validacao = pd.DataFrame(linhas)
     print(f"Total de registros validados: {len(df_validacao)}")
