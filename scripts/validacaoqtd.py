@@ -107,6 +107,7 @@ estados = [
 
 # -------------------- CÓDIGO PRINCIPAL --------------------
 if __name__ == "__main__":
+    hora_inicio = datetime.now().strftime("%H:%M")
     print("Informe o caminho do arquivo CSV/XLSX gerado para comparar:")
     arquivo = input("Arquivo: ").strip()
     if not arquivo:
@@ -373,8 +374,10 @@ if __name__ == "__main__":
         linha['origem_info'] = origem_info
         linhas.append(linha)
     df_validacao = pd.DataFrame(linhas)
-    print(f"Total de registros validados: {len(df_validacao)}")
-    print(df_validacao.head(20))
+
+    # Marcar horários para log
+    data_validacao = datetime.now().strftime("%d/%m/%Y")
+    hora_fim = datetime.now().strftime("%H:%M")
 
     # Salva validação simplificada
     pasta_saida = os.path.join('data', 'validacao')
@@ -384,5 +387,9 @@ if __name__ == "__main__":
     nome_arquivo_saida = f"{timestamp}_validacao_{nome_arquivo_original}.xlsx"
     caminho_saida = os.path.join(pasta_saida, nome_arquivo_saida)
     df_validacao.to_excel(caminho_saida, index=False)
-    print(f"Arquivo de validação salvo em: {caminho_saida}")
+    print(f"\n📅 Data de validacao: {data_validacao}")
+    print(f"⏰ Hora de início: {hora_inicio}")
+    print(f"⏰ Hora de fim: {hora_fim}")
+    print("\n🏁 Validação concluída com sucesso.")
+    print(f"\nArquivo de validação salvo em: {caminho_saida}")
 
