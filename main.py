@@ -146,7 +146,7 @@ for idx_estado, estado in enumerate(estados_selecionados, 1):
         dados_estado = []
         total = len(links_municipios)
         max_msg_len = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             args_list = [(url, estado, tipo_escolhido) for url in links_municipios]
             resultados = executor.map(processar_municipio, args_list)
             for i, dados_filtrados in enumerate(resultados, 1):
