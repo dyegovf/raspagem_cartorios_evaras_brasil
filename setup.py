@@ -1,4 +1,11 @@
-from setuptools import setup, find_packages
+try:
+    from setuptools import setup, find_packages
+except ImportError:
+    import sys
+    print("\n[ERRO] O pacote 'setuptools' não está instalado no Python selecionado.\n"
+          "Ative o ambiente virtual correto e instale com: pip install setuptools\n"
+          "Ou selecione o Python correto no VS Code (Ctrl+Shift+P > Python: Select Interpreter).\n")
+    sys.exit(1)
 
 setup(
     name="cartorios_brasil_scraper",

@@ -36,42 +36,61 @@ Cada linha contém:
 
 - Python 3.8+
 - Bibliotecas:
+
   - `requests`
   - `beautifulsoup4`
-  - `pandas`
-  - `python-dotenv`
-  - `openpyxl` (para exportação XLSX)
 
-Instale com:
+  ## Instalação
 
-```bash
-pip install -r requirements.txt
-```
+  1. Clone o repositório:
 
----
 
-### 🚀 Como usar
+      ```bash
+      git clone https://github.com/dyegovf/raspagem_cartorios_evaras_brasil.git
+      ```
 
-#### 1. Configure a pasta de destino
+  2. Crie e ative o ambiente virtual:
 
-Crie um arquivo `.env` na raiz do projeto com:
 
-```
-PASTA_CARTORIO=CAMINHO_DA_PASTA_DE_DESTINO
-```
+      ```bash
+      python -m venv .venv
+      # Ative no Windows:
+      .venv\Scripts\activate
+      # Ative no Linux/Mac:
+      source .venv/bin/activate
+      ```
 
-> Exemplo: `PASTA_CARTORIO=./data`
+  3. Instale as dependências:
 
-Adicione `.env` ao seu `.gitignore`:
 
-```
-.env
-```
+      ```bash
+      pip install -r requeriments.txt
+      ```
 
-#### 2. Execute o script principal
+  4. (Opcional) Instale o pacote localmente para desenvolvimento:
 
-```bash
-python main.py
+
+      ```bash
+      python setup.py develop
+      # ou
+      python setup.py install
+      ```
+
+      > **Atenção:**
+      > Se receber erro relacionado ao `setuptools`, siga estes passos:
+      > 1. Certifique-se de ativar o ambiente virtual antes de rodar o setup.py.
+      > 2. No VS Code, selecione o interpretador Python da `.venv` (Ctrl+Shift+P > Python: Select Interpreter).
+      > 3. Instale o setuptools no ambiente virtual:
+      >    ```bash
+      >    pip install setuptools
+      >    ```
+      > 4. Feche e reabra o terminal integrado do VS Code após trocar o interpretador.
+
+  5. Configure o arquivo `.env` conforme o exemplo fornecido.
+
+  6. Execute os scripts conforme instruções abaixo.
+     python main.py
+
 ```
 
 Você será guiado por três etapas:
@@ -97,6 +116,7 @@ Você será guiado por três etapas:
 
 ### 📬 Contato
 
-Desenvolvido por Dyegovf  
-📍 Brasília, Brasil  
+Desenvolvido por Dyegovf
+📍 Brasília, Brasil
 📧 dyegovf@gmail.com
+```
