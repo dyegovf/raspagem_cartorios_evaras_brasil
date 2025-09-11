@@ -10,8 +10,6 @@ from scripts.raspagem_core import extrair_links_municipios, extrair_dados_munici
 
 load_dotenv()
 
-
-
 # Lista de estados brasileiros
 estados = [
     'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
@@ -43,7 +41,6 @@ def slugify(text):
     text = re.sub(r'[úùûü]', 'u', text)
     text = re.sub(r'[^a-z0-9_]', '_', text)
     return text
-
 
 def normalizar_campo(valor, manter_ponto_virgula=False):
     if not isinstance(valor, str):
@@ -137,6 +134,7 @@ campos_esperados_camel = [normalizar_nome_campo(c) for c in campos_esperados]
 def processar_municipio(args):
     url_municipio, estado, tipo_escolhido = args
     dados_municipio = extrair_dados_municipio(url_municipio, estado)
+    time.sleep(0.3)  # Delay para evitar bloqueio do servidor
     dados_filtrados = filtrar_dados(dados_municipio, tipo_escolhido)
     return dados_filtrados
 
@@ -148,7 +146,7 @@ for idx_estado, estado in enumerate(estados_selecionados, 1):
         dados_estado = []
         total = len(links_municipios)
         max_msg_len = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             args_list = [(url, estado, tipo_escolhido) for url in links_municipios]
             resultados = executor.map(processar_municipio, args_list)
             for i, dados_filtrados in enumerate(resultados, 1):
