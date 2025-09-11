@@ -207,7 +207,7 @@ if __name__ == "__main__":
             if resp is None:
                 return []
             soup_mun = BeautifulSoup(resp.content, 'html.parser')
-            time.sleep(1)  # Delay maior para evitar bloqueio
+            time.sleep(0.3)  # Delay maior para evitar bloqueio
             # Extração padronizada do nome do município (breadcrumb, h1, url)
             municipio = None
             breadcrumb = soup_mun.select_one('ul.breadcrumbs li:last-child span[itemprop="name"]')
